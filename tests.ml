@@ -254,7 +254,7 @@ c:
 let test_branch_pruned = " mut x = 9
  mut y = 10
  mut r = 1
- invalidate (x == y) %deopt_l2 [r, x, y]
+ invalidate (x == y) %deopt_l2 []
  r <- 2
  print r
  stop
@@ -291,16 +291,18 @@ continue:
 "
 
 let test_branch_pruning_exp prog expected =
-  let scope = Scope.infer prog in
-  let instrs = (drop_annots prog) in
-  let prog2 = Transform.branch_prune (instrs, scope) in
+  let _ = Scope.infer prog in
+  let prog = (drop_annots prog) in
+  let () = Printf.printf "%s\n\n" (Disasm.disassemble prog) in
+  let prog2 = Transform.branch_prune prog in
+  let () = Printf.printf "%s\n\n" (Disasm.disassemble prog2) in
   assert_equal (Disasm.disassemble prog2) expected
 
 let test_branch_pruning prog deopt =
   let open Eval in
-  let scope = Scope.infer prog in
+  let _ = Scope.infer prog in
   let instrs = (drop_annots prog) in
-  let prog2 = Transform.branch_prune (instrs, scope) in
+  let prog2 = Transform.branch_prune instrs in
   let res1 = Eval.run_forever no_input instrs in
   let res2 = Eval.run_forever no_input prog2 in
   assert_equal res1.trace res2.trace;

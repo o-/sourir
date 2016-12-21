@@ -30,23 +30,18 @@ let remove_dead_code prog entry=
   Array.of_list (remove_dead_code 0)
 
 (* TODO: allow pruning of the true branch, but we need not expression for that *)
-let branch_prune (prog, scope) =
+let branch_prune prog =
   let deopt_label l = "%deopt_" ^ l in
   (* Convert "branch e l1 l2" to "invalidate e l1; goto l2" *)
   let rec kill_branch pc =
     if pc = Array.length prog then [Stop] else
-    match scope.(pc) with
-    | Scope.Dead -> assert(false)
-    | Scope.Scope scope ->
-        begin match prog.(pc) with
-        | Branch (exp, l1, l2) ->
-            let vars = Instr.VarSet.elements scope in
-            Invalidate (exp, deopt_label l2, vars) ::
-              Goto l1 ::
-                kill_branch (pc+1)
-        | i ->
-            i :: kill_branch (pc+1)
-        end
+    match prog.(pc) with
+    | Branch (exp, l1, l2) ->
+        Invalidate (exp, deopt_label l2, []) ::
+          Goto l1 ::
+            kill_branch (pc+1)
+    | i ->
+        i :: kill_branch (pc+1)
   in
   (* Scan the code and generate a landing-pad for all invalidates *)
   let gen_landing_pad entry =
@@ -88,6 +83,16 @@ let branch_prune (prog, scope) =
   let landing_pads = gen_deopt_targets killed in
   let final = Array.of_list killed in
   let combined = Array.concat (final :: landing_pads) in
-  remove_empty_jmp (remove_dead_code combined 0)
-
-
+  let cleanup = remove_empty_jmp (remove_dead_code combined 0) in
+  let fixup_deopt_scope prog =
+    let live = Analysis.live prog in
+    let rec fixup_deopt_scope pc =
+      if pc = Array.length prog then [Stop] else
+      begin match prog.(pc) with
+      | Invalidate (exp, label, []) -> Invalidate (exp, label, live pc)
+      | v -> v
+      end :: fixup_deopt_scope (pc+1)
+    in
+    Array.of_list (fixup_deopt_scope 0)
+  in
+  fixup_deopt_scope cleanup
