@@ -346,11 +346,19 @@ l:
  mut y = (a+b)
  b <- 4
  branch b l l2
+ # gap
 l2:
  mut y = (y+b)
  branch b l l3
 l3:
 ")
+
+
+let do_test_cfg = function () ->
+  let open Analysis in
+  let cfg = cfg test_df in
+  let expected = [(0,5); (6,9); (11,13); (14,14)] in
+  assert_equal_sorted cfg expected
 
 
 let do_test_liveness = function () ->
@@ -366,9 +374,9 @@ let do_test_liveness = function () ->
   assert_equal_sorted (live 7)  ["a";"y"];
   assert_equal_sorted (live 8)  ["a";"b";"y"];
   assert_equal_sorted (live 9)  ["a";"b";"y"];
-  assert_equal_sorted (live 10) ["a";"b";"y"];
-  assert_equal_sorted (live 11) ["a";"b"];
+  assert_equal_sorted (live 11) ["a";"b";"y"];
   assert_equal_sorted (live 12) ["a";"b"];
+  assert_equal_sorted (live 13) ["a";"b"];
   assert_equal_sorted (live 0) ["a"]
 
 
@@ -380,12 +388,12 @@ let do_test_used = function () ->
   assert_equal_sorted (InstrSet.elements (used 2)) [];
   assert_equal_sorted (InstrSet.elements (used 4)) [5;7];
   assert_equal_sorted (InstrSet.elements (used 5)) [];
-  assert_equal_sorted (InstrSet.elements (used 7)) [11];
-  assert_equal_sorted (InstrSet.elements (used 8)) [7;9;11;12];
+  assert_equal_sorted (InstrSet.elements (used 7)) [12];
+  assert_equal_sorted (InstrSet.elements (used 8)) [7;9;12;13];
   assert_equal_sorted (InstrSet.elements (used 9)) [];
-  assert_equal_sorted (InstrSet.elements (used 10)) [];
   assert_equal_sorted (InstrSet.elements (used 11)) [];
   assert_equal_sorted (InstrSet.elements (used 12)) [];
+  assert_equal_sorted (InstrSet.elements (used 13)) [];
   assert_equal_sorted (InstrSet.elements (used 6)) []
 
 
@@ -397,7 +405,7 @@ let do_test_reaching = function () ->
   assert_equal_sorted (InstrSet.elements (reaching 2)) [0;1];
   assert_equal_sorted (InstrSet.elements (reaching 5)) [0;4];
   assert_equal_sorted (InstrSet.elements (reaching 7)) [8;0;4];
-  assert_equal_sorted (InstrSet.elements (reaching 11)) [8;7];
+  assert_equal_sorted (InstrSet.elements (reaching 12)) [8;7];
   assert_equal_sorted (InstrSet.elements (reaching 0)) []
 
 
@@ -465,6 +473,7 @@ let suite =
    "reaching">:: do_test_reaching;
    "used">:: do_test_used;
    "liveness">:: do_test_liveness;
+   "cfg">:: do_test_cfg;
    ]
 ;;
 

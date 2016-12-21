@@ -187,3 +187,27 @@ let used prog : pc -> InstrSet.t =
         let uses_of var = VariableMap.at var res in
         let all_uses = List.map uses_of defined in
         List.fold_left InstrSet.union InstrSet.empty all_uses
+
+let cfg program =
+  let rec next_exit pc =
+    if Array.length program = pc then (pc-1)
+    else
+      match program.(pc) with
+      | Goto _ | Branch _ -> pc
+      (* Fall through to another label exits the basic block *)
+      | Label _ -> (pc-1)
+      | _ -> next_exit (pc+1)
+  in
+  let rec find_nodes pc =
+    let pc' = pc+1 in
+    if Array.length program = pc then []
+    else
+      match program.(pc) with
+      | Label _ ->
+          let exit = next_exit pc' in
+          (pc, exit) :: find_nodes (exit+1)
+      | _ -> find_nodes (pc')
+  in
+  let entry = (0, next_exit 0) in
+  let entries = entry :: find_nodes ((snd entry)+1) in
+  entries
