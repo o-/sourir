@@ -339,6 +339,7 @@ let test_df = fst (parse_test
 "mut a = 1
  mut b = 2
  mut d = (a+b)
+ # space
  b <- 3
  mut z = (a+b)
 l:
@@ -351,21 +352,41 @@ l2:
 l3:
 ")
 
+
+let do_test_liveness = function () ->
+  let open Analysis in
+  let live = live test_df in
+  assert_equal_sorted (live 0) ["a"];
+  assert_equal_sorted (live 1) ["a";"b"];
+  assert_equal_sorted (live 2) ["a"];
+  assert_equal_sorted (live 3) ["a"];
+  assert_equal_sorted (live 4) ["a";"b"];
+  assert_equal_sorted (live 5) ["a";"b"];
+  assert_equal_sorted (live 6) ["a";"b"];
+  assert_equal_sorted (live 7)  ["a";"y"];
+  assert_equal_sorted (live 8)  ["a";"b";"y"];
+  assert_equal_sorted (live 9)  ["a";"b";"y"];
+  assert_equal_sorted (live 10) ["a";"b";"y"];
+  assert_equal_sorted (live 11) ["a";"b"];
+  assert_equal_sorted (live 12) ["a";"b"];
+  assert_equal_sorted (live 0) ["a"]
+
+
 let do_test_used = function () ->
   let open Analysis in
   let used = used test_df in
-  assert_equal_sorted (InstrSet.elements (used 0)) [2;4;6];
+  assert_equal_sorted (InstrSet.elements (used 0)) [2;5;7];
   assert_equal_sorted (InstrSet.elements (used 1)) [2];
   assert_equal_sorted (InstrSet.elements (used 2)) [];
-  assert_equal_sorted (InstrSet.elements (used 3)) [4;6];
-  assert_equal_sorted (InstrSet.elements (used 4)) [];
-  assert_equal_sorted (InstrSet.elements (used 6)) [10];
-  assert_equal_sorted (InstrSet.elements (used 7)) [6;8;10;11];
-  assert_equal_sorted (InstrSet.elements (used 8)) [];
+  assert_equal_sorted (InstrSet.elements (used 4)) [5;7];
+  assert_equal_sorted (InstrSet.elements (used 5)) [];
+  assert_equal_sorted (InstrSet.elements (used 7)) [11];
+  assert_equal_sorted (InstrSet.elements (used 8)) [7;9;11;12];
   assert_equal_sorted (InstrSet.elements (used 9)) [];
   assert_equal_sorted (InstrSet.elements (used 10)) [];
   assert_equal_sorted (InstrSet.elements (used 11)) [];
-  assert_equal_sorted (InstrSet.elements (used 5)) []
+  assert_equal_sorted (InstrSet.elements (used 12)) [];
+  assert_equal_sorted (InstrSet.elements (used 6)) []
 
 
 let do_test_reaching = function () ->
@@ -374,9 +395,9 @@ let do_test_reaching = function () ->
   assert_equal_sorted (InstrSet.elements (reaching 0)) [];
   assert_equal_sorted (InstrSet.elements (reaching 1)) [];
   assert_equal_sorted (InstrSet.elements (reaching 2)) [0;1];
-  assert_equal_sorted (InstrSet.elements (reaching 4)) [0;3];
-  assert_equal_sorted (InstrSet.elements (reaching 6)) [7;0;3];
-  assert_equal_sorted (InstrSet.elements (reaching 10)) [7;6];
+  assert_equal_sorted (InstrSet.elements (reaching 5)) [0;4];
+  assert_equal_sorted (InstrSet.elements (reaching 7)) [8;0;4];
+  assert_equal_sorted (InstrSet.elements (reaching 11)) [8;7];
   assert_equal_sorted (InstrSet.elements (reaching 0)) []
 
 
@@ -443,6 +464,7 @@ let suite =
    "branch_pruning_eval3">:: (fun () -> test_branch_pruning test_double_loop "%deopt_continue2");
    "reaching">:: do_test_reaching;
    "used">:: do_test_used;
+   "liveness">:: do_test_liveness;
    ]
 ;;
 
