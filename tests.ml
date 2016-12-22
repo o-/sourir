@@ -353,12 +353,29 @@ l2:
 l3:
 ")
 
+let do_test_dom = function () ->
+  let open Analysis in
+  let cfg = Cfg.of_program test_df in
+  let dom = dominators (test_df, cfg) in
+  let expected = [| []; [0]; [0;1]; [0;1;2]; |] in
+  let got = Array.map (fun s ->
+    List.map (fun n -> n.id) (CfgNodeSet.elements s)) dom in
+  assert_equal got expected;
+  let c1 = least_common_dominator (test_df, cfg) 8 14 in
+  let c2 = least_common_dominator (test_df, cfg) 8 13 in
+  let c3 = least_common_dominator (test_df, cfg) 12 13 in
+  assert_equal c1.id 0;
+  assert_equal c2.id 0;
+  assert_equal c3.id 1
 
 let do_test_cfg = function () ->
   let open Analysis in
-  let cfg = cfg test_df in
-  let expected = [(0,5); (6,9); (11,13); (14,14)] in
-  assert_equal_sorted cfg expected
+  let cfg = Cfg.of_program test_df in
+  let expected = [|{id=0; entry=0; exit=5};
+                   {id=1; entry=6; exit=9};
+                   {id=2; entry=11; exit=13};
+                   {id=3; entry=14; exit=14}|] in
+  assert_equal cfg expected
 
 
 let do_test_liveness = function () ->
@@ -474,6 +491,7 @@ let suite =
    "used">:: do_test_used;
    "liveness">:: do_test_liveness;
    "cfg">:: do_test_cfg;
+   "dom">:: do_test_dom;
    ]
 ;;
 
