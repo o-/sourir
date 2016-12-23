@@ -189,10 +189,10 @@ let used prog : pc -> InstrSet.t =
         List.fold_left InstrSet.union InstrSet.empty all_uses
 
 
-type cfg_node = { id : int; entry : pc; exit : pc}
+type cfg_node = { id : int; entry : pc; exit : pc; succ : int list }
 module CfgNode = struct
   type t = cfg_node
-  let compare a b = Pervasives.compare a.entry b.entry
+  let compare a b = Pervasives.compare a.id b.id
 end
 module Cfg = struct
   type t = cfg_node array
@@ -219,23 +219,36 @@ module Cfg = struct
       match work with
       | [] -> acc
       | pc :: rest ->
-          (* first bb starts without label *)
-          let exit = if pc = 0 then next_exit 0 else next_exit (pc+1) in
-          let node = {id = id; entry = pc; exit = exit} in
-          let acc = node :: acc in
-          let not_done pc = not (List.exists (fun n -> n.entry = pc) acc) in
-          let succ = successors program node.exit in
-          let succ = List.filter not_done succ in
-          (* explore cfg depth first to ensure topological order of id *)
-          find_nodes (succ @ rest) (id+1) acc
+          let seen acc pc = List.exists (fun n -> n.entry = pc) acc in
+          if seen acc pc then find_nodes rest id acc
+          else
+            (* first bb starts without label *)
+            let exit = if pc = 0 then next_exit 0 else next_exit (pc+1) in
+            let node = {id = id; entry = pc; exit = exit; succ = []} in
+            let acc = node :: acc in
+            let succ = successors program exit in
+            let succ = List.filter (fun pc -> not (seen acc pc)) succ in
+            (* explore cfg depth first to ensure topological order of id *)
+            find_nodes (succ @ rest) (id+1) acc
     in
     let entries = find_nodes [0] 0 [] in
+    let prov_cfg = Array.of_list entries in
+    (* TODO: maybe assign the successors in the above loop
+     * but its kinda hard with the order constraints *)
+    let rec find_succ nodes =
+      match nodes with
+      | [] -> []
+      | node :: rest ->
+          let succ = successors program node.exit in
+          let ids = List.map (fun pc -> (node_at prov_cfg pc).id) succ in
+          let node = {id = node.id; entry = node.entry; exit = node.exit; succ = ids} in
+          node :: find_succ rest
+    in
+    let entries = find_succ entries in
     Array.of_list (List.rev entries)
 
-  let successors program cfg node =
-    let cont_pc = successors program node.exit in
-    let node_at = node_at cfg in
-    List.map node_at cont_pc
+  let successors cfg node =
+    List.map (fun i -> cfg.(i)) node.succ
 end
 module CfgNodeSet = Set.Make(CfgNode)
 
@@ -277,17 +290,21 @@ let dominators (program, cfg) =
     if CfgNodeSet.equal cur_dom merged then None else Some merged
   in
   let update node dom = CfgNodeSet.add node dom in
-  let successors = Cfg.successors program cfg in
+  let successors = Cfg.successors cfg in
   cfg_dataflow_analysis successors CfgNodeSet.empty cfg merge update
 
-let least_common_dominator (program, cfg) pc1 pc2 =
-  let doms = dominators (program, cfg) in
+let common_dominator (program, cfg, doms) pcs =
+  let nodes = List.map (Cfg.node_at cfg) pcs in
+  let doms = List.map (fun n -> CfgNodeSet.add n doms.(n.id)) nodes in
+  let common = List.fold_left CfgNodeSet.inter (List.hd doms) (List.tl doms) in
+  assert (not (CfgNodeSet.is_empty common));
+  CfgNodeSet.max_elt common
+
+let dominates (program, cfg, doms) pc1 pc2 =
   let node1 = Cfg.node_at cfg pc1 in
   let node2 = Cfg.node_at cfg pc2 in
-  let dom1 = doms.(node1.id) in
-  let dom2 = doms.(node2.id) in
-  let common = CfgNodeSet.inter dom1 dom2 in
-  CfgNodeSet.max_elt common
+  let doms2 = doms.(node2.id) in
+  CfgNodeSet.exists (fun n -> n = node1) doms2
 
 let dominates_all_uses (program, cfg, doms, used) pc =
   let uses = InstrSet.elements (used pc) in
@@ -300,19 +317,33 @@ let dominates_all_uses (program, cfg, doms, used) pc =
   let uses_least = CfgNodeSet.max_elt common in
   least.id = uses_least.id
 
-let least_reaching (program, cfg, doms, reaching) pc =
-  let defs = InstrSet.elements (reaching pc) in
-  let node_id_at pc = (Cfg.node_at cfg pc).id in
-  let defs_doms = List.map (fun pc -> doms.(node_id_at pc)) defs in
-  let common = List.fold_left CfgNodeSet.inter CfgNodeSet.empty defs_doms in
-  CfgNodeSet.max_elt common
-
-let can_move (program, cfg, doms, reaching, used) pc =
+let can_move (program, scope, cfg, doms, reaching, used) pc : cfg_node option =
   let dominates_uses = dominates_all_uses (program, cfg, doms, used) pc in
   if not dominates_uses then None
   else
     let node = Cfg.node_at cfg pc in
-    let least_reaching = least_reaching (program, cfg, doms, reaching) pc in
-    if least_reaching.id >= node.id then None
-    else Some least_reaching
-
+    let my_doms = doms.(node.id) in
+    let reaching = InstrSet.elements (reaching pc) in
+    let reaching_nodes = List.map (fun pc -> Cfg.node_at cfg pc) reaching in
+    let is_my_dom node = CfgNodeSet.exists (fun dom -> dom.id = node.id) my_doms in
+    let reaching_dominates = List.map is_my_dom reaching_nodes in
+    let all_reaching_dominates = List.fold_left (&&) true reaching_dominates in
+    if not all_reaching_dominates then None
+    else
+      let rec max_move my_doms =
+        let one_up = CfgNodeSet.max_elt my_doms in
+        let rest = CfgNodeSet.filter (fun n -> n != one_up) my_doms in
+        match scope.(one_up.exit) with
+        | Instr.Dead -> None
+        | Instr.Scope scope ->
+          let defs = VarSet.of_list (Instr.defined_vars program.(pc)) in
+          let in_scope = VarSet.equal defs (VarSet.inter defs scope) in
+          if in_scope then
+            let next_up = max_move rest in
+            begin match next_up with
+            | None -> Some one_up
+            | Some n -> Some n
+            end
+          else None
+      in
+      max_move my_doms

@@ -26,7 +26,7 @@ let run_checked prog pred =
 let exact vars = Some Scope.(Exact (VarSet.of_list vars))
 let at_least vars = Some Scope.(At_least (VarSet.of_list vars))
 
-let no_annotations program : Scope.annotated_program =
+let no_annotations program : annotated_program =
   (program, Array.map (fun _ -> None) program)
 
 let test_print =
@@ -353,28 +353,29 @@ l2:
 l3:
 ")
 
-let do_test_dom = function () ->
+let do_test_dom1 = function () ->
   let open Analysis in
   let cfg = Cfg.of_program test_df in
-  let dom = dominators (test_df, cfg) in
+  let doms = dominators (test_df, cfg) in
   let expected = [| []; [0]; [0;1]; [0;1;2]; |] in
   let got = Array.map (fun s ->
-    List.map (fun n -> n.id) (CfgNodeSet.elements s)) dom in
+    List.map (fun n -> n.id) (CfgNodeSet.elements s)) doms in
   assert_equal got expected;
-  let c1 = least_common_dominator (test_df, cfg) 8 14 in
-  let c2 = least_common_dominator (test_df, cfg) 8 13 in
-  let c3 = least_common_dominator (test_df, cfg) 12 13 in
-  assert_equal c1.id 0;
-  assert_equal c2.id 0;
-  assert_equal c3.id 1
+  let c1 = common_dominator (test_df, cfg, doms) [8; 14] in
+  let c2 = common_dominator (test_df, cfg, doms) [8; 13] in
+  let c3 = common_dominator (test_df, cfg, doms) [12; 13] in
+  assert_equal c1.id 1;
+  assert_equal c2.id 1;
+  assert_equal c3.id 2
+
 
 let do_test_cfg = function () ->
   let open Analysis in
   let cfg = Cfg.of_program test_df in
-  let expected = [|{id=0; entry=0; exit=5};
-                   {id=1; entry=6; exit=9};
-                   {id=2; entry=11; exit=13};
-                   {id=3; entry=14; exit=14}|] in
+  let expected = [|{id=0; entry=0; exit=5; succ=[1]};
+                   {id=1; entry=6; exit=9; succ=[1;2]};
+                   {id=2; entry=11; exit=13; succ=[1;3]};
+                   {id=3; entry=14; exit=14; succ=[]}|] in
   assert_equal cfg expected
 
 
@@ -425,6 +426,62 @@ let do_test_reaching = function () ->
   assert_equal_sorted (InstrSet.elements (reaching 12)) [8;7];
   assert_equal_sorted (InstrSet.elements (reaching 0)) []
 
+let test_df2 = fst (Parse.parse_string
+" goto jmp
+start:
+  mut i = 1
+  mut c = 0
+  mut v = 123
+  mut x = 0
+  loop:
+    branch (i==10) loop_end loop_begin
+  loop_begin:
+    mut w = 3
+    branch (c==2) tr fs
+    tr:
+      w <- 3
+      goto ct
+    fs:
+      branch (c==4) tr2 fs2
+      tr2:
+        stop
+    fs2:
+      w <- 4
+      goto ct
+  ct:
+    x <- w
+    v <- (c+1)
+    i <- (i+v)
+    goto loop
+loop_end:
+  print i
+  print x
+  # bla
+  goto end
+jmp:
+  branch true start end
+end:
+")
+
+let do_test_dom prog = function () ->
+  let open Analysis in
+  let cfg = Cfg.of_program prog in
+  let doms = Analysis.dominators (prog, cfg) in
+  let c = Analysis.common_dominator (test_df2, cfg, doms) [12; 19] in
+  let expected = Cfg.node_at cfg 9 in
+  assert_equal c expected;
+  let used = Analysis.used prog in
+  let reaching = Analysis.reaching prog in
+  assert (Analysis.dominates_all_uses (prog, cfg, doms, used) 12);
+  assert (not (Analysis.dominates_all_uses (prog, cfg, doms, used) 24));
+  assert (Analysis.dominates_all_uses (prog, cfg, doms, used) 23);
+  let expected = Cfg.node_at cfg 3 in
+  let scope = Scope.infer (no_annotations prog) in
+  let move = Analysis.can_move (prog, scope, cfg, doms, reaching, used) 23 in
+  match move with
+  | None -> assert false
+  | Some n -> assert_equal n.id expected.id;
+  ()
 
 let suite =
   let open Assembler in
@@ -491,7 +548,8 @@ let suite =
    "used">:: do_test_used;
    "liveness">:: do_test_liveness;
    "cfg">:: do_test_cfg;
-   "dom">:: do_test_dom;
+   "dom">:: do_test_dom1;
+   "dom2">:: do_test_dom test_df2;
    ]
 ;;
 

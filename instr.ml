@@ -159,4 +159,12 @@ let consumed_vars exp =
   in
   VarSet.elements res
 
+type scope_annotation =
+  | Exact of VarSet.t
+  | At_least of VarSet.t
 
+type inferred_scope =
+  | Dead
+  | Scope of VarSet.t
+
+type annotated_program = (program * scope_annotation option array)
