@@ -18,7 +18,7 @@ lib:
 	$(OCAMLBUILD) sourir.cma
 
 runtop: lib
-	utop -I _build sourir.cma
+	utop -require menhirLib -I _build parser_messages.cmo sourir.cma
 
 run: sourir
 	./sourir examples/sum.sou
