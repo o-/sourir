@@ -37,9 +37,16 @@ let () =
         exit 1
       | scopes ->
         let program = fst annotated_program in
-        let program = if ((Array.length Sys.argv > 2) && (Sys.argv.(2) = "--prune"))
+        let program = if Array.exists (fun arg -> arg = "--prune") Sys.argv
           then
             let opt = Transform.branch_prune (program, scopes) in
+            let () = Printf.printf "%s" (Disasm.disassemble opt) in
+            opt
+          else program
+        in
+        let program = if Array.exists (fun arg -> arg = "--cm") Sys.argv
+          then
+            let opt = Codemotion.apply program in
             let () = Printf.printf "%s" (Disasm.disassemble opt) in
             opt
           else program

@@ -71,6 +71,7 @@ let forward_analysis init_state program =
 
 let backwards_analysis init_state program =
   let exits = exits program in
+  assert (exits <> []);
   let init_state = List.map (fun pc -> (init_state, pc)) exits in
   let preds = predecessors program in
   let predecessors pc = preds.(pc) in

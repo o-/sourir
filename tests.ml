@@ -28,15 +28,13 @@ let run_checked prog pred =
 let exact vars = Some Scope.(Exact (VarSet.of_list vars))
 let at_least vars = Some Scope.(At_least (VarSet.of_list vars))
 
-let no_annotations program : annotated_program =
-  (program, Array.map (fun _ -> None) program)
-
 let parse_test str =
   try Parse.parse_string str
   with Parse.Error error ->
     Parse.report_error error;
     exit 2
 
+let no_annotations = Scope.no_annotations
 
 let test_print =
   let open Assembler.OO in
@@ -449,7 +447,7 @@ let do_test_reaching = function () ->
   assert_equal_sorted (InstrSet.elements (reaching 12)) [8;7];
   assert_equal_sorted (InstrSet.elements (reaching 0)) []
 
-let test_df2 = fst (Parse.parse_string
+let test_df2 = (Parse.parse_string
 " goto jmp
 start:
   mut i = 1
@@ -490,9 +488,87 @@ let do_test_dom prog = function () ->
   let cfg = Cfg.of_program prog in
   let doms = Cfg.dominators (prog, cfg) in
   let c = Cfg.common_dominator (test_df2, cfg, doms) [12; 19] in
-  let expected = Cfg.node_at cfg 9 in
+  let expected = Cfg.bb_at cfg 9 in
   let open Cfg in
   assert_equal c.id expected.id
+
+let do_test_dominates_uses = function () ->
+  let anls prog =
+    let cfg = Cfg.of_program prog in
+    let doms = Cfg.dominators (prog, cfg) in
+    let used = Analysis.used prog in
+    (prog, cfg, doms, used)
+  in
+  let prog = fst (parse_test
+" mut a = 3
+  mut b = a
+") in
+  assert (Codemotion.dominates_all_uses (anls prog) 0);
+  let prog = fst (parse_test
+" mut b = 2
+ loop:
+  b <- 3
+  mut a = b
+  branch b loop cont
+ cont:
+") in
+  assert (Codemotion.dominates_all_uses (anls prog) 2);
+  let prog = fst (parse_test
+" mut b = 2
+ loop:
+  b <- 3
+  goto loop2
+ loop2:
+  mut a = b
+  branch b loop cont
+ cont:
+") in
+  assert (Codemotion.dominates_all_uses (anls prog) 2);
+  let prog = fst (parse_test
+" mut b = 2
+ loop:
+  mut a = b
+  goto loop2
+ loop2:
+  b <- 3
+  branch b loop cont
+ cont:
+") in
+  assert (not (Codemotion.dominates_all_uses (anls prog) 5));
+  let prog = fst (parse_test
+" mut b = 2
+ loop:
+  mut a = b
+  b <- 3
+  branch b loop cont
+ cont:
+") in
+  assert (not (Codemotion.dominates_all_uses (anls prog) 3));
+  let prog = fst (parse_test
+" mut b = 2
+  branch b a b
+ a:
+  b <- 1
+  goto c
+ b:
+  b <- 3
+ c:
+  print b
+") in
+   assert (not (Codemotion.dominates_all_uses (anls prog) 3));
+   assert (not (Codemotion.dominates_all_uses (anls prog) 6))
+
+let do_test_codemotion = function () ->
+  let can_move = Codemotion.can_move (fst test_df2) in
+  let open Cfg in
+  begin match can_move 23 with
+  | Some i -> assert_equal i.id 2
+  | None -> assert false
+  end;
+  assert_equal (can_move 9) None;
+  assert_equal (can_move 22) None;
+  assert_equal (can_move 12) None;
+  assert_equal (can_move 9) None
 
 let suite =
   let open Assembler in
@@ -568,9 +644,13 @@ let suite =
    "liveness">:: do_test_liveness;
    "cfg">:: do_test_cfg;
    "dom">:: do_test_dom1;
-   "dom2">:: do_test_dom test_df2;
+   "dom2">:: do_test_dom (fst test_df2);
+   "codemotion1">:: do_test_dominates_uses;
+   "codemotion2">:: do_test_codemotion;
    ]
 ;;
+
+do_test_codemotion ();;
 
 let _ =
   run_test_tt_main suite;

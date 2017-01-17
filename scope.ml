@@ -19,6 +19,9 @@ module ScopeInfo = struct
                   VarSet.equal a.defined b.defined
 end
 
+let no_annotations program : annotated_program =
+  (program, Array.map (fun _ -> None) program)
+
 (* Internally we keep track of the declared and defined variables.
  * The output scopes and the annotations contain only the declarations. But
  * internally infer asserts that undefined variables are never used and
@@ -71,4 +74,3 @@ let infer (program : annotated_program) : inferred_scope array =
       Scope res.declared
   in
   Array.mapi finish res
-

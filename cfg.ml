@@ -1,4 +1,12 @@
-type basic_block = { id : int; entry : Instr.pc; exit : Instr.pc; mutable succ : basic_block list }
+
+type basic_block = {
+  id : int;                        (* dominators have smaller id *)
+  entry : Instr.pc;                (* first instruction *)
+  exit : Instr.pc;                 (* last instruction *)
+  prepend : Instr.pc;              (* insert at this pc to prepend (ie. after the label) *)
+  append : Instr.pc;               (* insert at this pc to append (ie. after the jump *)
+  mutable succ : basic_block list  (* successors *) }
+
 module BasicBlock = struct
   type t = basic_block
   let compare a b = Pervasives.compare a.id b.id
@@ -6,23 +14,23 @@ end
 
 type cfg = basic_block array
 
-let node_at cfg pc =
-  let rec node_at id =
+let bb_at cfg pc =
+  let rec bb_at id =
     assert (id < Array.length cfg);
     let node = cfg.(id) in
     if node.entry <= pc && node.exit >= pc then node
-    else node_at (id+1) in
-  node_at 0
+    else bb_at (id+1) in
+  bb_at 0
 
 let of_program program : cfg =
   let rec next_exit pc =
     let open Instr in
-    if Array.length program = pc then (pc-1)
+    if Array.length program = pc then (pc-1, pc-1)
     else
       match[@warning "-4"] program.(pc) with
-      | Goto _ | Branch _ | Stop -> pc
+      | Goto _ | Branch _ | Stop | Invalidate _ -> (pc, pc)
       (* Fall through to another label exits the basic block *)
-      | Label _ -> (pc-1)
+      | Label _ -> (pc-1, pc)
       | _ -> next_exit (pc+1)
   in
   let rec find_nodes work id acc : basic_block list =
@@ -32,9 +40,15 @@ let of_program program : cfg =
         let seen acc pc = List.exists (fun n -> n.entry = pc) acc in
         if seen acc pc then find_nodes rest id acc
         else
-          (* first bb starts without label *)
-          let exit = if pc = 0 then next_exit 0 else next_exit (pc+1) in
-          let node = {id = id; entry = pc; exit = exit; succ = []} in
+          (* first bb might start without label *)
+          let prepend =
+            match[@warning "-4"] program.(pc) with
+            | Instr.Label _ -> (pc+1)
+            | _ -> pc
+          in
+          let exit, append = next_exit prepend in
+          let node = {id = id; entry = pc; exit = exit;
+                      prepend = prepend; append = append; succ = []} in
           let acc = node :: acc in
           let succ = Analysis.successors program exit in
           let succ = List.filter (fun pc -> not (seen acc pc)) succ in
@@ -46,8 +60,8 @@ let of_program program : cfg =
   (* TODO: maybe assign the successors in the above loop
    * but its kinda hard with the order constraints *)
   let update_succ node =
-    let succ = Analysis.successors program node.exit in
-    let succ = List.map (fun pc -> node_at cfg pc) succ in
+    let succ_instr = Analysis.successors program node.exit in
+    let succ = List.map (fun pc -> bb_at cfg pc) succ_instr in
     node.succ <- succ;
   in
   Array.iter update_succ cfg;
@@ -71,10 +85,10 @@ let cfg_dataflow_analysis (init_state : 'a)
         in begin match merged with
         | None -> work rest
         | Some merged ->
-            program_state.(bb.id) <- Some merged;
-            let updated = update bb merged in
-            let new_work = List.map (fun bb -> (updated, bb)) bb.succ in
-            work (new_work @ rest)
+          program_state.(bb.id) <- Some merged;
+          let updated = update bb merged in
+          let new_work = List.map (fun bb -> (updated, bb)) bb.succ in
+          work (new_work @ rest)
         end
   in
   work [(init_state, cfg.(0))];
@@ -92,7 +106,7 @@ let dominators (program, cfg) =
   cfg_dataflow_analysis BasicBlockSet.empty cfg merge update
 
 let common_dominator (program, cfg, doms) pcs =
-  let nodes = List.map (node_at cfg) pcs in
+  let nodes = List.map (bb_at cfg) pcs in
   let doms = List.map (fun n -> BasicBlockSet.add n doms.(n.id)) nodes in
   let common = List.fold_left BasicBlockSet.inter (List.hd doms) (List.tl doms) in
   assert (not (BasicBlockSet.is_empty common));
