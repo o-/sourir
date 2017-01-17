@@ -27,38 +27,40 @@ let can_move_analysis (program, scope, cfg, doms, reaching, used) pc
   let defs = Instr.defined_vars program.(pc) in
   (* 1. Condition: I have a dominator *)
   let open Cfg in
-  let bb = bb_at cfg pc in
-  let my_doms = doms.(bb.id) in
-  if BasicBlockSet.is_empty my_doms then None
-  else
-    (* 2. Condition: I dominates all uses *)
-    if not (dominates_all_uses (program, cfg, doms, used) pc) then None
+  match bb_at cfg pc with
+  | exception Analysis.DeadCode _ -> None
+  | bb ->
+    let my_doms = doms.(bb.id) in
+    if BasicBlockSet.is_empty my_doms then None
     else
-      (* 3. Condition: All reaching definitions dominate me *)
-      let reaching_def = Analysis.InstrSet.elements (reaching pc) in
-      let reaching = List.map (fun pc -> bb_at cfg pc) reaching_def in
-      let dominates_me other =
-        match BasicBlockSet.find other my_doms with
-        | exception Not_found -> false
-        | _ -> true
-      in
-      let reaching_dominates_me = List.map dominates_me reaching in
-      if not (List.fold_left (&&) true reaching_dominates_me) then None
+      (* 2. Condition: I dominates all uses *)
+      if not (dominates_all_uses (program, cfg, doms, used) pc) then None
       else
-        (* 4. Condition: Do not move above reaching definitions *)
-        let max_reaching =
-          if reaching = [] then -1 else (BasicBlockSet.max_elt (BasicBlockSet.of_list reaching)).id in
-        let move_candidates = BasicBlockSet.filter (fun bb ->
-            bb.id >= max_reaching) my_doms in
-        (* 5. Condition: Do not move out of scope *)
-        let open Instr in
-        let candidates_in_scope = BasicBlockSet.filter (fun bb ->
-            match[@warning "-4"] scope.(bb.append) with
-            | Scope scope when not (VarSet.is_empty (VarSet.inter defs scope)) -> true
-            | _ -> false) move_candidates in
-        (* Done *)
-        if BasicBlockSet.is_empty candidates_in_scope then None
-        else Some (BasicBlockSet.min_elt candidates_in_scope)
+        (* 3. Condition: All reaching definitions dominate me *)
+        let reaching_def = Analysis.InstrSet.elements (reaching pc) in
+        let reaching = List.map (fun pc -> bb_at cfg pc) reaching_def in
+        let dominates_me other =
+          match BasicBlockSet.find other my_doms with
+          | exception Not_found -> false
+          | _ -> true
+        in
+        let reaching_dominates_me = List.map dominates_me reaching in
+        if not (List.fold_left (&&) true reaching_dominates_me) then None
+        else
+          (* 4. Condition: Do not move above reaching definitions *)
+          let max_reaching =
+            if reaching = [] then -1 else (BasicBlockSet.max_elt (BasicBlockSet.of_list reaching)).id in
+          let move_candidates = BasicBlockSet.filter (fun bb ->
+              bb.id >= max_reaching) my_doms in
+          (* 5. Condition: Do not move out of scope *)
+          let open Instr in
+          let candidates_in_scope = BasicBlockSet.filter (fun bb ->
+              match[@warning "-4"] scope.(bb.append) with
+              | Scope scope when not (VarSet.is_empty (VarSet.inter defs scope)) -> true
+              | _ -> false) move_candidates in
+          (* Done *)
+          if BasicBlockSet.is_empty candidates_in_scope then None
+          else Some (BasicBlockSet.min_elt candidates_in_scope)
 
 let can_move prog =
   let scope = Scope.infer (Scope.no_annotations prog) in

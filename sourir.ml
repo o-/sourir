@@ -40,14 +40,14 @@ let () =
         let program = if Array.exists (fun arg -> arg = "--prune") Sys.argv
           then
             let opt = Transform.branch_prune (program, scopes) in
-            let () = Printf.printf "%s" (Disasm.disassemble opt) in
+            let () = Printf.printf "\nAfter branch pruning:\n%s\n" (Disasm.disassemble opt) in
             opt
           else program
         in
         let program = if Array.exists (fun arg -> arg = "--cm") Sys.argv
           then
             let opt = Codemotion.apply program in
-            let () = Printf.printf "%s" (Disasm.disassemble opt) in
+            let () = Printf.printf "\nAfter code motion:\n%s\n" (Disasm.disassemble opt) in
             opt
           else program
         in

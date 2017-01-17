@@ -4,7 +4,7 @@ type basic_block = {
   entry : Instr.pc;                (* first instruction *)
   exit : Instr.pc;                 (* last instruction *)
   prepend : Instr.pc;              (* insert at this pc to prepend (ie. after the label) *)
-  append : Instr.pc;               (* insert at this pc to append (ie. after the jump *)
+  append : Instr.pc;               (* insert at this pc to append (ie. before the jump *)
   mutable succ : basic_block list  (* successors *) }
 
 module BasicBlock = struct
@@ -16,10 +16,11 @@ type cfg = basic_block array
 
 let bb_at cfg pc =
   let rec bb_at id =
-    assert (id < Array.length cfg);
-    let node = cfg.(id) in
-    if node.entry <= pc && node.exit >= pc then node
-    else bb_at (id+1) in
+    if id = Array.length cfg then raise (Analysis.DeadCode pc)
+    else
+      let node = cfg.(id) in
+      if node.entry <= pc && node.exit >= pc then node
+      else bb_at (id+1) in
   bb_at 0
 
 let of_program program : cfg =
