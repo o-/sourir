@@ -91,6 +91,61 @@ exception Unbound_label of label
 
 module VarSet = Set.Make(Variable)
 
+type typed_var =
+  | Mut_var of string
+  | Const_var of string
+
+exception Incomparable
+
+module TypedVar = struct
+  type t = typed_var
+  let compare a b =
+    match (a,b) with
+    | Mut_var   a, Mut_var   b
+    | Const_var a, Const_var b -> String.compare a b
+    | Mut_var   a, Const_var b
+    | Const_var a, Mut_var   b ->
+      if a = b then raise Incomparable else String.compare a b
+end
+
+module TypedVarSet = struct
+  include Set.Make(TypedVar)
+
+  let vars set =
+    List.map (fun v ->
+        match v with
+        | Mut_var x | Const_var x -> x)
+      (elements set)
+
+  let untyped set = VarSet.of_list (vars set)
+
+  let muts set =
+    let muts = filter (fun v ->
+        match v with
+        | Mut_var x -> true
+        | Const_var x -> false)
+      set in
+    untyped muts
+
+  let diff_untyped typed untyped =
+    filter (fun e ->
+        match e with
+        | Mut_var x | Const_var x ->
+          begin match VarSet.find x untyped with
+            | exception Not_found -> true
+            | _ -> false
+          end) typed
+
+  let inter_untyped typed untyped =
+    filter (fun e ->
+        match e with
+        | Mut_var x | Const_var x ->
+          begin match VarSet.find x untyped with
+            | exception Not_found -> false
+            | _ -> true
+          end) typed
+end
+
 let simple_expr_vars = function
   | Var x -> VarSet.singleton x
   | Lit _ -> VarSet.empty
@@ -102,8 +157,8 @@ let expr_vars = function
     |> List.fold_left VarSet.union VarSet.empty
 
 let declared_vars = function
-  | Decl_const (x, _)
-  | Decl_mut (x, _) -> VarSet.singleton x
+  | Decl_const (x, _) -> TypedVarSet.singleton (Const_var x)
+  | Decl_mut (x, _) -> TypedVarSet.singleton (Mut_var x)
   | (Assign _
     | Branch _
     | Label _
@@ -113,7 +168,7 @@ let declared_vars = function
     | Invalidate _
     | Comment _
     | EndOpt
-    | Stop) -> VarSet.empty
+    | Stop) -> TypedVarSet.empty
 
 (* Which variables need to be in scope
  * Producer: declared_vars *)
@@ -133,10 +188,10 @@ let required_vars = function
   | Stop -> VarSet.empty
 
 let defined_vars = function
-  | Decl_const (x, _)
+  | Decl_const (x, _) -> TypedVarSet.singleton (Const_var x)
   | Decl_mut (x, Some _)
   | Assign (x ,_)
-  | Read x -> VarSet.singleton x
+  | Read x -> TypedVarSet.singleton (Mut_var x)
   | Decl_mut (_, None)
   | Branch _
   | Label _
@@ -145,7 +200,7 @@ let defined_vars = function
   | Print _
   | Invalidate _
   | EndOpt
-  | Stop -> VarSet.empty
+  | Stop -> TypedVarSet.empty
 
 (* Which variables need to be defined
  * Producer: defined_vars *)
@@ -171,7 +226,7 @@ type scope_annotation =
 
 type inferred_scope =
   | Dead
-  | Scope of VarSet.t
+  | Scope of TypedVarSet.t
 
 type program = { instructions : instruction_stream; annotations : scope_annotation option array }
 

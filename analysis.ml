@@ -144,7 +144,7 @@ let reaching prog : pc -> InstrSet.t =
   let update pc defs =
     let instr = prog.(pc) in
     (* add or override defined vars in one go*)
-    let kill = VarSet.elements (defined_vars instr) in
+    let kill = TypedVarSet.vars (defined_vars instr) in
     let loc = InstrSet.singleton pc in
     let replace acc var = VariableMap.add var loc acc in
     List.fold_left replace defs kill
@@ -169,7 +169,7 @@ let liveness_analysis prog =
   let update pc uses =
     let instr = prog.(pc) in
     (* First remove defined vars *)
-    let kill = VarSet.elements (defined_vars instr) in
+    let kill = TypedVarSet.vars (defined_vars instr) in
     let remove acc var = VariableMap.remove var acc in
     let uses = List.fold_left remove uses kill in
     (* Then add used vars *)
@@ -200,7 +200,7 @@ let used prog : pc -> InstrSet.t =
     match res.(pc) with
     | None -> raise (DeadCode pc)
     | Some res ->
-        let defined = VarSet.elements (defined_vars instr) in
+        let defined = TypedVarSet.vars (defined_vars instr) in
         let uses_of var = VariableMap.at var res in
         let all_uses = List.map uses_of defined in
         List.fold_left InstrSet.union InstrSet.empty all_uses

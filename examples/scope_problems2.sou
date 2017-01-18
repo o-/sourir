@@ -1,0 +1,7 @@
+loop:
+ mut d = 1
+ branch (d==1) cont loop2
+loop2:
+ d <- 2
+ goto loop
+cont:

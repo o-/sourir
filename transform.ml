@@ -104,6 +104,39 @@ let copy_fresh global_labels prog =
   let new_all_labels = LabelSet.union all_labels new_labels in
   (new_all_labels, Array.of_list (copy 0))
 
+let lift_declarations (code : instruction_stream) (insert : pc) to_lift : instruction_stream =
+  let open Instr in
+  let cfg = Cfg.of_program code in
+  let doms_at = Cfg.dominators (code, cfg) in
+  let bb_insert = Cfg.bb_at cfg insert in
+  let defs = List.map (fun v -> Decl_mut (v, None)) (VarSet.elements to_lift) in
+  let rec lift pos =
+    if pos = Array.length code then []
+    else
+      begin
+        if pos = insert then defs else []
+      end @
+      let instr = code.(pos) in
+      let declared = declared_vars instr in
+      if TypedVarSet.is_empty declared then instr :: lift (pos+1)
+      else
+        let declared_mut = TypedVarSet.muts declared in
+        if VarSet.is_empty (VarSet.inter declared_mut to_lift) then instr :: lift (pos+1)
+        else
+          let open Cfg in
+          let bb = bb_at cfg pos in
+          let doms = doms_at.(bb.id) in
+          match BasicBlockSet.find bb_insert doms with
+          | exception Not_found -> instr :: lift (pos+1)
+          | _ ->
+            begin match[@warning "-4"] instr with
+              | Decl_mut (x, None) -> lift (pos+1)
+              | Decl_mut (x, Some exp) -> Assign (x, exp) :: lift (pos+1)
+              | _ -> instr :: lift (pos+1)
+            end
+  in
+  Array.of_list (lift 0)
+
 let branch_prune (prog : program) : program =
   let scope = Scope.infer prog in
   let code = prog.instructions in
@@ -119,34 +152,38 @@ let branch_prune (prog : program) : program =
         (* 1. Copy the program with fresh labels for the landing pad *)
         let used_labels, landing_pad = copy_fresh used_labels code in
         let entry = resolve code l2 in
-        let deopt_label = next_fresh_label used_labels ("deopt_" ^ l2) in
-        let used_labels = LabelSet.add deopt_label used_labels in
-        (* 2. Get the scoping information for the deopt:
-         *    Live variables need to be captured
-         *    The rest of the scope needs to be declared to create a valid frame *)
-        let live = live_at entry in
-        let dead = Instr.VarSet.elements (Instr.VarSet.diff scope (Instr.VarSet.of_list live)) in
-        let create_frame = Array.of_list (List.map (fun x -> Instr.Decl_mut (x, None)) dead) in
-        (* 3. Create the actual landing pad *)
+        let deopt_label_entry = next_fresh_label used_labels ("deopt_entry_" ^ l2) in
+        let deopt_label_cont = next_fresh_label used_labels ("deopt_cont_" ^ l2) in
+        let used_labels = LabelSet.add deopt_label_entry (LabelSet.add deopt_label_cont used_labels) in
+        (* 2. Create the actual landing pad *)
         let landing_pad = Array.concat [
+          (* deoptimization entry label *)
+          [| Comment ("Landing pad for " ^ deopt_label_entry);
+             Label deopt_label_entry |];
+          (* continuation *)
+          [| Goto deopt_label_cont |];
           (* program before entry point *)
           Array.sub landing_pad 0 entry;
-          (* deoptimization target label *)
-          [| Label deopt_label |];
-          (* recreate the frame: dead variables might be assigned in the continuation *)
-          create_frame;
+          (* deoptimization continuation label *)
+          [| Label deopt_label_cont |];
           (* rest of the program *)
           Array.sub landing_pad entry ((Array.length landing_pad) - entry);
           (* explicit stop since we might fall through the next landing pad otherwise *)
           [| Stop |]
         ] in
-        (* 4. Trim the landing pad to contain only the continuation
+        (* 3. Trim the landing pad to contain only the continuation
          *    part reachable from the entry label *)
-        let cont = Array.of_list (
-            Comment ("Landing pad for " ^ deopt_label) ::
-            remove_dead_code landing_pad entry) in
+        let cont' = Array.of_list (
+            remove_dead_code landing_pad (resolve landing_pad deopt_label_entry)) in
+        (* 4. Fix the frame: Since the dead mutable variables might be written to
+         *    in the continuation we need to lift their declaration to the beginning
+         *    of the landing pad *)
+        let live = live_at entry in
+        let muts_in_scope = TypedVarSet.muts scope in
+        let dead = Instr.VarSet.diff muts_in_scope (Instr.VarSet.of_list live) in
+        let cont = lift_declarations cont' 2 dead in
         (* 5. Replace the branch instruction by an invalidate *)
-        let pruned = Invalidate (exp, deopt_label, live) :: pruned in
+        let pruned = Invalidate (exp, deopt_label_entry, live) :: pruned in
         let pruned = Goto l1 :: pruned in
         let landing_pads = cont :: landing_pads in
         branch_prune pc' used_labels pruned landing_pads
@@ -160,4 +197,4 @@ let branch_prune (prog : program) : program =
   let pruned = Array.of_list (List.rev rev_pruned) in
   let cleaned = Array.of_list (remove_dead_code pruned 0) in
   let final = Array.of_list (remove_empty_jmp cleaned) in
-  Scope.no_annotations (Array.concat (final :: [| EndOpt |] :: landing_pads))
+  Scope.no_annotations (Array.concat (final :: [| EndOpt |] :: List.rev landing_pads))

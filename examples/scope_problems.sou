@@ -1,0 +1,7 @@
+loop:
+ const d = 1
+ branch (d==1) cont loop2
+loop2:
+ print d
+ goto loop
+cont:

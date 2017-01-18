@@ -257,16 +257,18 @@ c:
 let test_branch_pruned = " mut x = 9
  mut y = 10
  mut r = 1
- invalidate (x == y) deopt_l2 []
+ invalidate (x == y) deopt_entry_l2 []
  r <- 2
  print r
  stop
  end_opt
- #Landing pad for deopt_l2
-deopt_l2:
+ #Landing pad for deopt_entry_l2
+deopt_entry_l2:
  mut r
  mut x
  mut y
+ goto deopt_cont_l2
+deopt_cont_l2:
 l2.0:
  r <- 3
  goto c.0
@@ -300,21 +302,48 @@ continue:
  print sum
 "
 
+let test_double_loop2 = parse_test
+"mut i
+ i <- 0
+ mut sum = 0
+ const limit = 4
+loop1:
+  branch (i != limit) loop_body1 continue
+loop_body1:
+   mut i2 = 0
+   mut sum2 = 0
+   const d = 1
+loop2:
+    branch (i2 != limit) loop_body2 continue2
+loop_body2:
+     print i2
+     sum2 <- (sum + i2)
+     i2 <- (i2 + d)
+    goto loop2
+continue2:
+   sum <- (sum + sum2)
+   i <- (i + d)
+ goto loop1
+continue:
+ print sum
+"
+
+
 let test_branch_pruning_exp (prog : program) expected =
   let prog2 = Transform.branch_prune prog in
   assert_equal (Disasm.disassemble prog2) expected
 
 let test_branch_pruning (prog : program) deopt =
-  ()
-  (* Disabled: broken by 1fe28f8e8ae776952f2628b605310b660fec9d3f
   let open Eval in
   let prog2 = Transform.branch_prune prog in
   Printf.printf "%s\n" (Disasm.disassemble prog2);
+  Scope.check_whole_program prog;
+  Scope.check_whole_program prog2;
   run_checked prog no_input (fun res1 ->
       run_checked prog2 no_input (fun res2 ->
           assert_equal res1.trace res2.trace;
           assert_equal res2.deopt (Some deopt);
-          true) (); true ) () *)
+          true) (); true ) ()
 
 let assert_equal_sorted li1 li2 =
   assert_equal (List.sort compare li1) (List.sort compare li2)
@@ -639,9 +668,10 @@ let suite =
    "parser_scope1">:: test_parse_disasm "{a, b} print x\n{a,x,...} #asdf\n";
    "branch_pruning">:: (fun () -> test_branch_pruning_exp test_branch test_branch_pruned);
    "predecessors">:: do_test_pred;
-   "branch_pruning_eval">:: (fun () -> test_branch_pruning test_branch "deopt_l2");
-   "branch_pruning_eval2">:: (fun () -> test_branch_pruning (test_sum 10) "deopt_loop_body");
-   "branch_pruning_eval3">:: (fun () -> test_branch_pruning test_double_loop "deopt_continue2");
+   "branch_pruning_eval">:: (fun () -> test_branch_pruning test_branch "deopt_entry_l2");
+   "branch_pruning_eval2">:: (fun () -> test_branch_pruning (test_sum 10) "deopt_entry_loop_body");
+   "branch_pruning_eval3">:: (fun () -> test_branch_pruning test_double_loop "deopt_entry_continue2");
+   "branch_pruning_eval4">:: (fun () -> test_branch_pruning test_double_loop2 "deopt_entry_continue2");
    "reaching">:: do_test_reaching;
    "used">:: do_test_used;
    "liveness">:: do_test_liveness;
@@ -653,8 +683,7 @@ let suite =
    ]
 ;;
 
-do_test_codemotion ();;
-
+test_branch_pruning test_branch "deopt_entry_l2";;
 let _ =
   run_test_tt_main suite;
 ;;

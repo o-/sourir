@@ -8,15 +8,19 @@ exception UndeclaredVariable of pc * VarSet.t
 exception UninitializedVariable of pc * VarSet.t
 exception DuplicateVariable of pc * VarSet.t
 
-type scope_info = { declared : VarSet.t; defined : VarSet.t }
+type scope_info = { declared : TypedVarSet.t; defined : TypedVarSet.t; osr : VarSet.t }
+
 module ScopeInfo = struct
   type t = scope_info
-  let inter a b = {declared = VarSet.inter a.declared b.declared;
-                   defined = VarSet.inter a.defined b.defined}
-  let union a b = {declared = VarSet.union a.declared b.declared;
-                   defined = VarSet.union a.defined b.defined}
-  let equal a b = VarSet.equal a.declared b.declared &&
-                  VarSet.equal a.defined b.defined
+  let inter a b = {declared = TypedVarSet.inter a.declared b.declared;
+                   defined = TypedVarSet.inter a.defined b.defined;
+                   osr = VarSet.inter a.osr b.osr}
+  let union a b = {declared = TypedVarSet.union a.declared b.declared;
+                   defined = TypedVarSet.union a.defined b.defined;
+                   osr = VarSet.union a.osr b.osr}
+  let equal a b = TypedVarSet.equal a.declared b.declared &&
+                  TypedVarSet.equal a.defined b.defined &&
+                  VarSet.equal a.osr b.osr
 end
 
 let no_annotations (code : instruction_stream) : program  =
@@ -35,12 +39,16 @@ let generic_infer update (code : program) : inferred_scope array =
     let merged = ScopeInfo.inter cur incom in
     if ScopeInfo.equal cur merged then None else Some merged in
   let update pc incomming =
-    (* Verify new declarations do not shadow existing ones *)
     let instr = instructions.(pc) in
     let created = { declared = Instr.declared_vars instr;
-                    defined = Instr.defined_vars instr } in
-    let shadowed = VarSet.inter incomming.declared created.declared in
-    if not (VarSet.is_empty shadowed) then raise (DuplicateVariable (pc, shadowed))
+                    defined = Instr.defined_vars instr;
+                    osr = VarSet.empty } in
+    (* Verify new declarations do not shadow existing ones.
+     * Note: Only invalidate is allowed to create conflicting declarations *)
+    let shadowed = TypedVarSet.inter incomming.declared created.declared in
+    let real_shadowed = TypedVarSet.diff_untyped shadowed incomming.osr in
+    if not (TypedVarSet.is_empty real_shadowed)
+    then raise (DuplicateVariable (pc, TypedVarSet.untyped shadowed))
     else
       (* Remove incomming variables which are excluded by the annotations
        * (The actual checking of scope annotations happens later) *)
@@ -50,12 +58,12 @@ let generic_infer update (code : program) : inferred_scope array =
         declared = begin match annot with
           | None | Some (At_least _) -> incomming.declared
           | Some (Exact constraints) ->
-             VarSet.inter incomming.declared constraints
+             TypedVarSet.inter_untyped incomming.declared constraints
         end
       } in
       update instructions pc incomming' created
   in
-  let initial_state = [({declared = VarSet.empty; defined = VarSet.empty}, 0)] in
+  let initial_state = [({declared = TypedVarSet.empty; defined = TypedVarSet.empty; osr = VarSet.empty}, 0)] in
   let res = Analysis.dataflow_analysis initial_state instructions merge update in
   let finish pc res =
     let annotation = annotations.(pc) in
@@ -64,16 +72,18 @@ let generic_infer update (code : program) : inferred_scope array =
     | None -> Dead
     | Some res ->
       let must_have_declared vars =
-        if not (VarSet.subset vars res.declared)
-        then raise (UndeclaredVariable (pc, (VarSet.diff vars res.declared))) in
+        let declared = TypedVarSet.untyped res.declared in
+        if not (VarSet.subset vars declared)
+        then raise (UndeclaredVariable (pc, (VarSet.diff vars declared))) in
       must_have_declared (Instr.required_vars instr);
       begin match annotation with
         | None -> ()
         | Some (At_least xs | Exact xs) -> must_have_declared xs;
       end;
       let must_have_defined vars =
-        if not (VarSet.subset vars res.defined)
-        then raise (UninitializedVariable (pc, (VarSet.diff vars res.defined))) in
+        let defined = TypedVarSet.untyped res.defined in
+        if not (VarSet.subset vars defined)
+        then raise (UninitializedVariable (pc, (VarSet.diff vars defined))) in
       must_have_defined (Instr.used_vars instr);
       Scope res.declared
   in
@@ -99,8 +109,9 @@ let check_whole_program (code : program) =
       let scope = VarSet.of_list scope in
       let pc_next, pc_deopt = pc+1, resolve code br in
       let deopt_frame = {
-        declared = VarSet.inter updated.declared scope;
-        defined = VarSet.inter updated.defined scope } in
+        declared = TypedVarSet.inter_untyped updated.declared scope;
+        defined = TypedVarSet.inter_untyped updated.defined scope;
+        osr = scope } in
       [(updated, pc_next); (deopt_frame, pc_deopt)]
     | _ ->
       let succ = Analysis.successors code pc in

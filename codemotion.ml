@@ -58,7 +58,7 @@ let can_move_analysis (program, scope, cfg, doms, reaching, used) pc
           let open Instr in
           let candidates_in_scope = BasicBlockSet.filter (fun bb ->
               match[@warning "-4"] scope.(bb.append) with
-              | Scope scope when not (VarSet.is_empty (VarSet.inter defs scope)) -> true
+              | Scope scope when not (TypedVarSet.is_empty (TypedVarSet.inter defs scope)) -> true
               | _ -> false) move_candidates in
           (* Done *)
           if BasicBlockSet.is_empty candidates_in_scope then None
