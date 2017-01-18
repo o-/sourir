@@ -1,6 +1,6 @@
 open Instr
 
-let disassemble_annotated (prog : annotated_program) =
+let disassemble (prog : program) =
   let dump_instr buf instr annot =
     let pr = Printf.bprintf in
     let simple buf = function
@@ -34,13 +34,14 @@ let disassemble_annotated (prog : annotated_program) =
     | Invalidate (exp, l, vars)       -> pr buf " invalidate "; dump_expr exp;
                                          pr buf " %s [%s]" l (String.concat ", " vars)
     | Stop                            -> pr buf " stop"
+    | EndOpt                          -> pr buf " end_opt"
     | Comment str                     -> pr buf " #%s" str
     end;
     pr buf "\n"
   in
   let b = Buffer.create 1024 in
-  Array.iter2 (dump_instr b) (fst prog) (snd prog);
+  Array.iter2 (dump_instr b) prog.instructions prog.annotations;
   Buffer.contents b
 
-let disassemble (prog : Instr.program) =
-  disassemble_annotated (prog, Array.map (fun _ -> None) prog)
+let disassemble_stream (stream : instruction_stream) =
+  disassemble (Scope.no_annotations stream)

@@ -15,7 +15,7 @@ type configuration = {
   trace : trace;
   heap : heap;
   env : environment;
-  program : program;
+  program : instruction_stream;
   pc : pc;
   status : status;
   deopt : string option;
@@ -121,7 +121,7 @@ let instruction conf =
 
 let reduce conf =
   let eval conf e = eval conf.heap conf.env e in
-  let resolve label = Instr.resolve conf.program label in
+  let resolve label = resolve conf.program label in
   let pc' = conf.pc + 1 in
   assert (conf.status = Running);
   match instruction conf with

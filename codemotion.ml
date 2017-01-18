@@ -1,3 +1,5 @@
+open Instr
+
 let dominates_all_uses (program, cfg, doms, used) pc =
   let open Cfg in
   let uses = used pc in
@@ -62,7 +64,7 @@ let can_move_analysis (program, scope, cfg, doms, reaching, used) pc
           if BasicBlockSet.is_empty candidates_in_scope then None
           else Some (BasicBlockSet.min_elt candidates_in_scope)
 
-let can_move prog =
+let can_move (prog : instruction_stream) : pc -> Cfg.basic_block option =
   let scope = Scope.infer (Scope.no_annotations prog) in
   let cfg = Cfg.of_program prog in
   let doms = Cfg.dominators (prog, cfg) in
@@ -70,17 +72,19 @@ let can_move prog =
   let used = Analysis.used prog in
   can_move_analysis (prog, scope, cfg, doms, reaching, used)
 
-let rec apply (prog : Instr.program) : Instr.program =
-  let apply_step (prog : Instr.program) =
-    let scope = Scope.infer (Scope.no_annotations prog) in
-    let cfg = Cfg.of_program prog in
-    let doms = Cfg.dominators (prog, cfg) in
-    let reaching = Analysis.reaching prog in
-    let used = Analysis.used prog in
-    let can_move = can_move_analysis (prog, scope, cfg, doms, reaching, used) in
+let rec apply (prog : program) : program =
+  let apply_step (prog : program) : program option =
+    let code = prog.instructions in
+    let scope = Scope.infer prog in
+    let cfg = Cfg.of_program code in
+    let doms = Cfg.dominators (code, cfg) in
+    let reaching = Analysis.reaching code in
+    let used = Analysis.used code in
+    let can_move = can_move_analysis (code, scope, cfg, doms, reaching, used) in
 
     let rec get_move_candidate pc =
-      if pc = Array.length prog then None
+      if pc = Array.length code then None
+      else if code.(pc) = EndOpt then None
       else match can_move pc with
         | None -> get_move_candidate (pc + 1)
         | Some bb -> Some (pc, bb)
@@ -90,12 +94,13 @@ let rec apply (prog : Instr.program) : Instr.program =
     | None -> None
     | Some (pc, bb) ->
       let open Cfg in
-      Some (Array.concat [
-        Array.sub prog 0 (bb.append);
-        [| prog.(pc) |];
-        Array.sub prog (bb.append) (pc-bb.append);
-        Array.sub prog (pc+1) ((Array.length prog)-(pc+1))
-      ])
+      let res = (Array.concat [
+        Array.sub code 0 (bb.append);
+        [| code.(pc) |];
+        Array.sub code (bb.append) (pc-bb.append);
+        Array.sub code (pc+1) ((Array.length code)-(pc+1))
+      ]) in
+      Some (Scope.no_annotations res)
   in
 
   match apply_step prog with

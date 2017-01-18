@@ -1,5 +1,7 @@
+open Instr
+
 let () =
-  match Sys.argv.(1) with
+  match Sys.argv.(-1 + Array.length Sys.argv) with
   | exception _ ->
     Printf.eprintf
       "You should provide a Sourir file to parse as command-line argument.\n\
@@ -7,39 +9,41 @@ let () =
       Sys.executable_name;
     exit 1
   | path ->
-    let annotated_program =
+    let program : program =
       try Parse.parse_file path
       with Parse.Error error ->
         Parse.report_error error;
         exit 2
     in
-    begin match Scope.infer annotated_program with
-      | exception Scope.UndeclaredVariable xs ->
-        begin match Instr.VarSet.elements xs with
-          | [x] -> Printf.eprintf "Error: Variable %s is not declared.\n%!" x
-          | xs -> Printf.eprintf "Error: Variables {%s} are not declared.\n%!"
-                    (String.concat ", " xs)
+    begin match Scope.infer program with
+      | exception Scope.UndeclaredVariable (pc, xs) ->
+        let line = pc+1 in
+        begin match VarSet.elements xs with
+          | [x] -> Printf.eprintf "Error: %s:%d Variable %s is not declared.\n%!" path line x
+          | xs -> Printf.eprintf "Error: %s:%d Variables {%s} are not declared.\n%!"
+                    path line (String.concat ", " xs)
         end;
         exit 1
-      | exception Scope.UninitializedVariable xs ->
-        begin match Instr.VarSet.elements xs with
-          | [x] -> Printf.eprintf "Error: Variable %s might be uninitialized.\n%!" x
-          | xs -> Printf.eprintf "Error: Variables {%s} might be uninitialized.\n%!"
-                    (String.concat ", " xs)
+      | exception Scope.UninitializedVariable (pc, xs) ->
+        let line = pc+1 in
+        begin match VarSet.elements xs with
+          | [x] -> Printf.eprintf "Error: %s:%d Variable %s might be uninitialized.\n%!" path line x
+          | xs -> Printf.eprintf "Error: %s:%d Variables {%s} might be uninitialized.\n%!"
+                    path line (String.concat ", " xs)
         end;
         exit 1
-      | exception Scope.DuplicateVariable xs ->
-        begin match Instr.VarSet.elements xs with
-          | [x] -> Printf.eprintf "Error: Variable %s is declared more than once.\n%!" x
-          | xs -> Printf.eprintf "Error: Variables {%s} are declared more than once.\n%!"
-                    (String.concat ", " xs)
+      | exception Scope.DuplicateVariable (pc, xs) ->
+        let line = pc+1 in
+        begin match VarSet.elements xs with
+          | [x] -> Printf.eprintf "Error: %s:%d Variable %s is declared more than once.\n%!" path line x
+          | xs -> Printf.eprintf "Error: %s:%d Variables {%s} are declared more than once.\n%!"
+                    path line (String.concat ", " xs)
         end;
         exit 1
       | scopes ->
-        let program = fst annotated_program in
         let program = if Array.exists (fun arg -> arg = "--prune") Sys.argv
           then
-            let opt = Transform.branch_prune (program, scopes) in
+            let opt = Transform.branch_prune program in
             let () = Printf.printf "\nAfter branch pruning:\n%s\n" (Disasm.disassemble opt) in
             opt
           else program
@@ -47,9 +51,10 @@ let () =
         let program = if Array.exists (fun arg -> arg = "--cm") Sys.argv
           then
             let opt = Codemotion.apply program in
-            let () = Printf.printf "\nAfter code motion:\n%s\n" (Disasm.disassemble opt) in
+            let () = Printf.printf "\nAfter program motion:\n%s\n" (Disasm.disassemble opt) in
             opt
           else program
         in
-        ignore (Eval.run_interactive IO.stdin_input program)
+        Scope.check_whole_program program;
+        ignore (Eval.run_interactive IO.stdin_input program.instructions)
     end

@@ -7,7 +7,7 @@ and message = string
 
 exception Error of parse_error
 
-let parse lexbuf =
+let parse lexbuf : Instr.program =
   (* see the Menhir manual for the description of
      error messages support *)
   let open MenhirLib.General in
@@ -31,11 +31,11 @@ let parse lexbuf =
       (Parser.Incremental.program lexbuf.Lexing.lex_curr_p)
   with Lexer.Error (input, pos) -> raise (Error (Lexing (input, pos)))
 
-let parse_string str =
+let parse_string str : Instr.program =
   let lexbuf = Lexing.from_string str in
   parse lexbuf
 
-let parse_file path =
+let parse_file path : Instr.program =
   let chan = open_in path in
   let lexbuf =
     let open Lexing in

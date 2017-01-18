@@ -5,12 +5,12 @@
 %token DOUBLE_EQUAL NOT_EQUAL PLUS /* MINUS TIMES LT LTE GT GTE */
 %token LPAREN RPAREN LBRACKET RBRACKET LBRACE RBRACE
 %token COLON EQUAL LEFTARROW TRIPLE_DOT COMMA
-%token CONST MUT BRANCH GOTO PRINT INVALIDATE STOP READ
+%token CONST MUT BRANCH GOTO PRINT INVALIDATE STOP READ END_OPT
 %token<string> COMMENT
 %token NEWLINE
 %token EOF
 
-%start<Instr.annotated_program> program
+%start<Instr.program> program
 
 %{ open Instr
 
@@ -28,8 +28,8 @@ program:
 | optional_newlines prog=list(instruction_line) EOF
   {
     let annotations, instructions = List.split prog in
-    (Array.of_list instructions,
-     Array.of_list annotations)
+    { instructions = Array.of_list instructions;
+      annotations = Array.of_list annotations }
   }
 
 instruction_line:
@@ -71,6 +71,8 @@ instruction:
   { Invalidate (e, l, xs) }
 | STOP
   { Stop }
+| END_OPT
+  { EndOpt }
 | s=COMMENT
   { Comment s }
 
