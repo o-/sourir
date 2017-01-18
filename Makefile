@@ -25,6 +25,7 @@ run: sourir
 
 test_examples: sourir
 	for f in examples/*.sou; do yes 0 | ./sourir $$f > /dev/null; done
+	for f in examples/*.sou; do yes 0 | ./sourir --cm --prune $$f > /dev/null; done
 
 clean:
 	ocamlbuild -clean

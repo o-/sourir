@@ -18,6 +18,7 @@
   print w2
   print x
   stop
+  end_opt
 l2:
   x <- (x + two)
   print w1

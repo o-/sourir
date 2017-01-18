@@ -29,7 +29,7 @@ end
 
 type pc = Pc.t
 
-type program = instruction array
+type instruction_stream = instruction array
 and instruction =
   | Decl_const of variable * expression
   | Decl_mut of variable * (expression option)
@@ -42,6 +42,7 @@ and instruction =
   | Invalidate of expression * label * variable list
   | Stop
   | Comment of string
+  | EndOpt
 and expression =
   | Simple of simple_expression
   | Op of primop * simple_expression list
@@ -88,13 +89,6 @@ let value_of_string str : value = Lit (litteral_of_string str)
 
 exception Unbound_label of label
 
-let resolve (code : program) (label : string) =
-  let rec loop i =
-    if i >= Array.length code then raise (Unbound_label label)
-    else if code.(i) = Label label then i
-    else loop (i + 1)
-  in loop 0
-
 module VarSet = Set.Make(Variable)
 
 let simple_expr_vars = function
@@ -118,6 +112,7 @@ let declared_vars = function
     | Print _
     | Invalidate _
     | Comment _
+    | EndOpt
     | Stop) -> VarSet.empty
 
 (* Which variables need to be in scope
@@ -134,6 +129,7 @@ let required_vars = function
   | Print e -> expr_vars e
   | Invalidate (e, _l, xs) ->
     VarSet.union (VarSet.of_list xs) (expr_vars e)
+  | EndOpt
   | Stop -> VarSet.empty
 
 let defined_vars = function
@@ -148,6 +144,7 @@ let defined_vars = function
   | Comment _
   | Print _
   | Invalidate _
+  | EndOpt
   | Stop -> VarSet.empty
 
 (* Which variables need to be defined
@@ -165,6 +162,7 @@ let used_vars = function
   | Print e -> expr_vars e
   | Invalidate (e, _l, xs) ->
     VarSet.union (VarSet.of_list xs) (expr_vars e)
+  | EndOpt
   | Stop -> VarSet.empty
 
 type scope_annotation =
@@ -175,4 +173,11 @@ type inferred_scope =
   | Dead
   | Scope of VarSet.t
 
-type annotated_program = (program * scope_annotation option array)
+type program = { instructions : instruction_stream; annotations : scope_annotation option array }
+
+let resolve (code : instruction_stream) (label : string) =
+  let rec loop i =
+    if i >= Array.length code then raise (Unbound_label label)
+    else if code.(i) = Label label then i
+    else loop (i + 1)
+  in loop 0
