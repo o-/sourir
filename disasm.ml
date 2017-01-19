@@ -31,8 +31,12 @@ let disassemble (prog : program) =
     | Goto label                      -> pr buf " goto %s" label
     | Print exp                       -> pr buf " print "; dump_expr exp
     | Read var                        -> pr buf " read %s" var
+    | Invalidate (exp, l, vars)
+      when vars.captured = []         -> pr buf " invalidate "; dump_expr exp;
+                                         pr buf " %s []" l
     | Invalidate (exp, l, vars)       -> pr buf " invalidate "; dump_expr exp;
-                                         pr buf " %s [%s]" l (String.concat ", " vars)
+                                         pr buf " %s [%s = %s]" l (String.concat ", " vars.out)
+                                                                  (String.concat ", " vars.captured)
     | Stop                            -> pr buf " stop"
     | EndOpt                          -> pr buf " end_opt"
     | Comment str                     -> pr buf " #%s" str

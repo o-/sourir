@@ -182,12 +182,12 @@ let reduce conf =
          pc = pc';
        }
      else begin
-       let add env x =
-         match Env.find x conf.env with
-         | exception Not_found -> raise (Unbound_variable x)
-         | v -> Env.add x v env
+       let add env (old_name, new_name) =
+         match Env.find old_name conf.env with
+         | exception Not_found -> raise (Unbound_variable old_name)
+         | v -> Env.add new_name v env
        in
-       let new_env = List.fold_left add Env.empty xs in
+       let new_env = List.fold_left add Env.empty (List.combine xs.captured xs.out) in
        { conf with
          pc = resolve l;
          env = new_env;

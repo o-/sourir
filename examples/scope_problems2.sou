@@ -3,5 +3,6 @@ loop:
  branch (d==1) cont loop2
 loop2:
  d <- 2
+ print d
  goto loop
 cont:

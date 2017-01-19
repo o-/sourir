@@ -106,12 +106,12 @@ let check_whole_program (code : program) =
     | Invalidate (_exp, br, scope) ->
       (* The Invalidate instruction continues in a new context,
        * only explicitly captured variables are preserved. *)
-      let scope = VarSet.of_list scope in
+      let new_scope = VarSet.of_list scope.out in
       let pc_next, pc_deopt = pc+1, resolve code br in
       let deopt_frame = {
-        declared = TypedVarSet.inter_untyped updated.declared scope;
-        defined = TypedVarSet.inter_untyped updated.defined scope;
-        osr = scope } in
+        declared = TypedVarSet.inter_untyped updated.declared new_scope;
+        defined = TypedVarSet.inter_untyped updated.defined new_scope;
+        osr = new_scope } in
       [(updated, pc_next); (deopt_frame, pc_deopt)]
     | _ ->
       let succ = Analysis.successors code pc in

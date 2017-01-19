@@ -29,6 +29,8 @@ end
 
 type pc = Pc.t
 
+type osr_def = { captured : variable list; out : variable list }
+
 type instruction_stream = instruction array
 and instruction =
   | Decl_const of variable * expression
@@ -39,7 +41,7 @@ and instruction =
   | Goto of label
   | Read of variable
   | Print of expression
-  | Invalidate of expression * label * variable list
+  | Invalidate of expression * label * osr_def
   | Stop
   | Comment of string
   | EndOpt
@@ -183,7 +185,7 @@ let required_vars = function
   | Read x -> VarSet.singleton x
   | Print e -> expr_vars e
   | Invalidate (e, _l, xs) ->
-    VarSet.union (VarSet.of_list xs) (expr_vars e)
+    VarSet.union (VarSet.of_list xs.captured) (expr_vars e)
   | EndOpt
   | Stop -> VarSet.empty
 
@@ -216,7 +218,7 @@ let used_vars = function
   | Read _ -> VarSet.empty
   | Print e -> expr_vars e
   | Invalidate (e, _l, xs) ->
-    VarSet.union (VarSet.of_list xs) (expr_vars e)
+    VarSet.union (VarSet.of_list xs.captured) (expr_vars e)
   | EndOpt
   | Stop -> VarSet.empty
 

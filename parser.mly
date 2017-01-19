@@ -67,8 +67,12 @@ instruction:
   { Print e }
 | INVALIDATE
   e=expression l=label
-  xs=delimited(LBRACKET, separated_list(COMMA, variable), RBRACKET)
-  { Invalidate (e, l, xs) }
+  LBRACKET
+  out_scope=separated_list(COMMA, variable)
+  EQUAL
+  in_scope=separated_list(COMMA, variable)
+  RBRACKET
+  { Invalidate (e, l, { captured = in_scope; out = out_scope }) }
 | STOP
   { Stop }
 | END_OPT

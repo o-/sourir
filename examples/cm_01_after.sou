@@ -10,7 +10,7 @@
   mut x = 30
   mut z = 0
   read z
-  invalidate (z == zero) l2 [zero, one, two, w1, w2, x, z]
+  invalidate (z == zero) l2 [zero, one, two, w1, w2, x, z = zero, one, two, w1, w2, x, z]
   x <- (x + one)
   print w1
   print w2

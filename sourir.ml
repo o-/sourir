@@ -50,8 +50,9 @@ let () =
         in
         let program = if Array.exists (fun arg -> arg = "--cm") Sys.argv
           then
+            let () = Printf.printf "\nBefore code motion:\n%s\n" (Disasm.disassemble program) in
             let opt = Codemotion.apply program in
-            let () = Printf.printf "\nAfter program motion:\n%s\n" (Disasm.disassemble opt) in
+            let () = Printf.printf "\nAfter code motion:\n%s\n" (Disasm.disassemble opt) in
             opt
           else program
         in

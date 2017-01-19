@@ -183,7 +183,7 @@ let branch_prune (prog : program) : program =
         let dead = Instr.VarSet.diff muts_in_scope (Instr.VarSet.of_list live) in
         let cont = lift_declarations cont' 2 dead in
         (* 5. Replace the branch instruction by an invalidate *)
-        let pruned = Invalidate (exp, deopt_label_entry, live) :: pruned in
+        let pruned = Invalidate (exp, deopt_label_entry, {captured = live; out = live}) :: pruned in
         let pruned = Goto l1 :: pruned in
         let landing_pads = cont :: landing_pads in
         branch_prune pc' used_labels pruned landing_pads
