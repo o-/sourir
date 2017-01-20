@@ -99,7 +99,6 @@ let replace_used_var instr old_var new_var =
 
 let apply (code : instruction_stream) : instruction_stream =
   let code = Transform.lift_all code in
-
   let rec do_apply (code : instruction_stream) : instruction_stream =
     let apply_step (code : instruction_stream) : instruction_stream option =
       let scope = Scope.infer (Scope.no_annotations code) in
@@ -117,22 +116,24 @@ let apply (code : instruction_stream) : instruction_stream =
           | Some bb -> Some (pc, bb)
       in
 
-      let apply_move code used to_insert old_var new_var remove insert =
+      let apply_move code used to_insert_top to_insert old_var new_var remove insert =
         InstrSet.iter (fun pc ->
             code.(pc) <- replace_used_var code.(pc) old_var new_var
           ) used;
         let len = Array.length code in
         if remove < insert then
           Array.concat [
+            to_insert_top;
             Array.sub code 0 remove;
             Array.sub code (remove+1) (insert-remove-1);
-            [| to_insert |];
+            to_insert;
             Array.sub code insert (len-insert)
           ]
         else
           Array.concat [
+            to_insert_top;
             Array.sub code 0 insert;
-            [| to_insert |];
+            to_insert;
             Array.sub code insert (remove-insert);
             Array.sub code (remove+1) (len-remove-1)
           ]
@@ -151,7 +152,8 @@ let apply (code : instruction_stream) : instruction_stream =
             apply_move
               code
               used
-              (Decl_const (new_var, e))
+              [| |]
+              [| Decl_const (new_var, e) |]
               x
               new_var
               pc
@@ -161,7 +163,8 @@ let apply (code : instruction_stream) : instruction_stream =
             apply_move
               code
               used
-              (Decl_mut (new_var, Some e))
+              [| Decl_mut (new_var, None) |]
+              [| Assign (new_var, e) |]
               x
               new_var
               pc
