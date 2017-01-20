@@ -25,8 +25,8 @@ let print_program ppf (program : Instr.program) =
   Format.fprintf ppf "%s" (Disasm.disassemble program)
 ;;
 
-let print_an_program ppf (program : Instr.annotated_program) =
-  Format.fprintf ppf "%s" (Disasm.disassemble_annotated program)
+let print_an_program ppf (program : Instr.program) =
+  Format.fprintf ppf "%s" (Disasm.disassemble program)
 ;;
 
 #install_printer print_set_vars;;

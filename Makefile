@@ -23,11 +23,19 @@ runtop: lib
 run: sourir
 	./sourir examples/sum.sou
 
+TEMPDIR := $(shell mktemp -d)
+
 test_examples: sourir
-	for f in examples/*.sou; do yes 0 | ./sourir $$f > /dev/null; done
-	for f in examples/*.sou; do yes 0 | ./sourir --prune $$f > /dev/null; done
-	for f in examples/*.sou; do yes 0 | ./sourir --cm $$f > /dev/null; done
-	for f in examples/*.sou; do yes 0 | ./sourir --cm --prune $$f > /dev/null; done
+	mkdir $(TEMPDIR)/examples
+	for f in examples/*.sou; do yes 0 | ./sourir --quiet $$f              > $(TEMPDIR)/$$f.out; done
+	for f in examples/*.sou; do yes 0 | ./sourir --quiet --prune $$f      > $(TEMPDIR)/$$f.opt.out && diff $(TEMPDIR)/$$f.out $(TEMPDIR)/$$f.opt.out; done
+	for f in examples/*.sou; do yes 0 | ./sourir --quiet --cm $$f         > $(TEMPDIR)/$$f.opt.out && diff $(TEMPDIR)/$$f.out $(TEMPDIR)/$$f.opt.out; done
+	for f in examples/*.sou; do yes 0 | ./sourir --quiet --cm --prune $$f > $(TEMPDIR)/$$f.opt.out && diff $(TEMPDIR)/$$f.out $(TEMPDIR)/$$f.opt.out; done
+	for f in examples/*.sou; do yes 1 | ./sourir --quiet $$f              > $(TEMPDIR)/$$f.out; done
+	for f in examples/*.sou; do yes 1 | ./sourir --quiet --prune $$f      > $(TEMPDIR)/$$f.opt.out && diff $(TEMPDIR)/$$f.out $(TEMPDIR)/$$f.opt.out; done
+	for f in examples/*.sou; do yes 1 | ./sourir --quiet --cm $$f         > $(TEMPDIR)/$$f.opt.out && diff $(TEMPDIR)/$$f.out $(TEMPDIR)/$$f.opt.out; done
+	for f in examples/*.sou; do yes 1 | ./sourir --quiet --cm --prune $$f > $(TEMPDIR)/$$f.opt.out && diff $(TEMPDIR)/$$f.out $(TEMPDIR)/$$f.opt.out; done
+	rm -rf $(TEMPDIR)
 
 clean:
 	ocamlbuild -clean

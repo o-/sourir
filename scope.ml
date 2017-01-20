@@ -106,12 +106,27 @@ let check_whole_program (code : program) =
     | Invalidate (_exp, br, scope) ->
       (* The Invalidate instruction continues in a new context,
        * only explicitly captured variables are preserved. *)
-      let new_scope = VarSet.of_list scope.out in
-      let pc_next, pc_deopt = pc+1, resolve code br in
+      let out_declared = TypedVarSet.filter (fun var ->
+          List.exists (fun v ->
+              var = Const_var v || var = Mut_var v) scope.captured) updated.declared in
+      let out_defined = TypedVarSet.filter (fun var ->
+          List.exists (fun v ->
+              var = Const_var v || var = Mut_var v) scope.captured) updated.defined in
+      let mapping = List.combine scope.captured scope.out in
+      let map v = snd (List.find (fun (in_name, out_name) -> in_name = v) mapping) in
+      let out_declared_renamed = TypedVarSet.map (fun var ->
+          match var with
+          | Const_var v -> Const_var (map v)
+          | Mut_var v -> Mut_var (map v)) out_declared in
+      let out_defined_renamed = TypedVarSet.map (fun var ->
+          match var with
+          | Const_var v -> Const_var (map v)
+          | Mut_var v -> Mut_var (map v)) out_defined in
       let deopt_frame = {
-        declared = TypedVarSet.inter_untyped updated.declared new_scope;
-        defined = TypedVarSet.inter_untyped updated.defined new_scope;
-        osr = new_scope } in
+        declared = out_declared_renamed;
+        defined = out_defined_renamed;
+        osr = TypedVarSet.untyped out_declared_renamed } in
+      let pc_next, pc_deopt = pc+1, resolve code br in
       [(updated, pc_next); (deopt_frame, pc_deopt)]
     | _ ->
       let succ = Analysis.successors code pc in

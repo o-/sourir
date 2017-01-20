@@ -5,24 +5,18 @@ let dominates_all_uses (program, cfg, doms, used) pc =
   let uses = used pc in
   if Analysis.InstrSet.is_empty uses then true
   else
-    let sentinel = {id = -1; entry = -1; exit = -1; prepend = -1; append = -1; succ = [cfg.(0)]} in
     let bb_at pc = bb_at cfg pc in
     let bb_def = bb_at pc in
-    let doms_def = doms.(bb_def.id) in
-    let dom_def = if BasicBlockSet.is_empty doms_def then sentinel
-          else BasicBlockSet.max_elt doms_def in
     let uses = Analysis.InstrSet.elements uses in
-    let bb_uses = List.map (fun pc -> bb_at pc) uses in
-    let doms_uses = List.map (fun bb -> doms.(bb.id)) bb_uses in
-    let dom_uses = List.map (fun doms ->
-        if BasicBlockSet.is_empty doms then sentinel
-            else BasicBlockSet.max_elt doms) doms_uses in
-    List.for_all2 (fun use dom ->
-        dom_def.id < dom.id ||
-        (* common dominator and in the same basic block -> fine if def is before use
+    let doms_uses = List.map (fun pc ->
+        let bb = bb_at pc in
+        (pc, bb_at pc, doms.(bb.id))) uses in
+    List.for_all (fun (use, bb, doms) ->
+        (* in the same basic block -> fine if def is before use
          * (eg. linear loop body with both def and use) *)
-        (dom_def.id = dom.id && bb_def.id = (bb_at use).id &&
-           use > pc)) uses dom_uses
+        ((bb_def.id = bb.id && use > pc) ||
+         (BasicBlockSet.exists (fun bb ->
+              bb_def.id = bb.id) doms))) doms_uses
 
 let fresh_variable program =
   let rec collect_vars pc =
@@ -128,7 +122,6 @@ let replace_used_var instr old_var new_var =
     Invalidate (replace_var_exp e old_var new_var, l,
                 { captured = List.map (fun v -> if v = old_var then new_var else v) xs.captured;
                   out = xs.out })
-  | Assign (x, e) when x = old_var -> Assign (new_var, replace_var_exp e old_var new_var)
   | Assign (x, e) -> Assign (x, replace_var_exp e old_var new_var)
   | Decl_mut _
   | Label _
@@ -212,4 +205,4 @@ let rec apply (prog : program) : program =
 
   match apply_step prog with
   | None -> prog
-  | Some prog -> prog
+  | Some prog -> apply prog

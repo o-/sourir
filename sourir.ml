@@ -41,18 +41,18 @@ let () =
         end;
         exit 1
       | scopes ->
+        let quiet = Array.exists (fun arg -> arg = "--quiet") Sys.argv in
         let program = if Array.exists (fun arg -> arg = "--prune") Sys.argv
           then
             let opt = Transform.branch_prune program in
-            let () = Printf.printf "\nAfter branch pruning:\n%s\n" (Disasm.disassemble opt) in
+            if not quiet then Printf.printf "\nAfter branch pruning:\n%s\n" (Disasm.disassemble opt);
             opt
           else program
         in
         let program = if Array.exists (fun arg -> arg = "--cm") Sys.argv
           then
-            let () = Printf.printf "\nBefore code motion:\n%s\n" (Disasm.disassemble program) in
             let opt = Codemotion.apply program in
-            let () = Printf.printf "\nAfter code motion:\n%s\n" (Disasm.disassemble opt) in
+            if not quiet then Printf.printf "\nAfter code motion:\n%s\n" (Disasm.disassemble opt);
             opt
           else program
         in
