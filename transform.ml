@@ -151,3 +151,16 @@ let lift_all (code : instruction_stream) : instruction_stream =
   in
   let all_decls = VarSet.of_list (collect_decls 0) in
   lift_declarations code 0 all_decls
+
+let remove_dead_vars prog =
+  let used = Analysis.required prog in
+  let rec remove_dead_vars pc =
+    let pc' = pc + 1 in
+    if pc = Array.length prog then []
+    else
+      match[@warning "-4"] prog.(pc), Analysis.InstrSet.elements (used pc) with
+      | EndOpt, _ -> Array.to_list (Array.sub prog pc ((Array.length prog) - pc))
+      | Decl_mut _, [] -> remove_dead_vars pc'
+      | i, _ -> i :: remove_dead_vars pc'
+  in
+  Array.of_list (remove_dead_vars 0)

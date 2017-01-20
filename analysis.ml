@@ -222,3 +222,30 @@ let fresh_variable program =
     in
     find_next 0
 
+(* returns a 'pc -> pc set' computing uses of a declaration *)
+let required prog : pc -> InstrSet.t =
+  let required_analysis prog =
+    let merge cur_uses in_uses =
+      let merged = VariableMap.union cur_uses in_uses in
+      if VariableMap.equal cur_uses merged then None else Some merged
+    in
+    let update pc requires =
+      let instr = prog.(pc) in
+      let req = VarSet.elements (required_vars instr) in
+      let merge acc var = VariableMap.union (VariableMap.singleton var pc) acc in
+      List.fold_left merge requires req
+    in
+    backwards_analysis VariableMap.empty prog merge update
+  in
+  let res = required_analysis prog in
+  fun pc ->
+    let instr = prog.(pc) in
+    match res.(pc) with
+    | None -> raise (DeadCode pc)
+    | Some res ->
+        let declared = TypedVarSet.vars (declared_vars instr) in
+        let req_of var = VariableMap.at var res in
+        let all_uses = List.map req_of declared in
+        List.fold_left InstrSet.union InstrSet.empty all_uses
+
+
