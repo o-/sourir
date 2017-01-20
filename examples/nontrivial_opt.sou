@@ -1,0 +1,14 @@
+ mut x
+ mut sum = 0
+loop:
+ x <- 1
+ mut r
+ read r
+ branch (r==0) cnt chng
+chng:
+ x <- r
+cnt:
+ sum <- (x+sum)
+ branch (sum != 10) loop end
+end:
+ print sum

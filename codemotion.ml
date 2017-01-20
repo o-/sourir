@@ -178,4 +178,5 @@ let apply (code : instruction_stream) : instruction_stream =
     | None -> code
     | Some code -> do_apply code
   in
-  Transform.remove_dead_vars (do_apply code)
+  let opt = do_apply code in
+  Transform.remove_dead_vars opt
