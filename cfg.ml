@@ -112,3 +112,20 @@ let common_dominator (program, cfg, doms) pcs =
   let common = List.fold_left BasicBlockSet.inter (List.hd doms) (List.tl doms) in
   assert (not (BasicBlockSet.is_empty common));
   BasicBlockSet.max_elt common
+
+let dominates_all_uses (program, cfg, doms, used) pc =
+  let uses = used pc in
+  if Analysis.InstrSet.is_empty uses then true
+  else
+    let bb_at pc = bb_at cfg pc in
+    let bb_def = bb_at pc in
+    let uses = Analysis.InstrSet.elements uses in
+    let doms_uses = List.map (fun pc ->
+        let bb = bb_at pc in
+        (pc, bb_at pc, doms.(bb.id))) uses in
+    List.for_all (fun (use, bb, doms) ->
+        (* in the same basic block -> fine if def is before use
+         * (eg. linear loop body with both def and use) *)
+        ((bb_def.id = bb.id && use > pc) ||
+         (BasicBlockSet.exists (fun bb ->
+              bb_def.id = bb.id) doms))) doms_uses

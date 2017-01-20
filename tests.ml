@@ -330,12 +330,12 @@ continue:
 
 
 let test_branch_pruning_exp (prog : program) expected =
-  let prog2 = Transform.branch_prune prog.instructions in
+  let prog2 = Prune.branch_false prog.instructions in
   assert_equal (Disasm.disassemble_stream prog2) expected
 
 let test_branch_pruning (prog : program) deopt =
   let open Eval in
-  let prog2 = (Scope.no_annotations (Transform.branch_prune prog.instructions)) in
+  let prog2 = (Scope.no_annotations (Prune.branch_false prog.instructions)) in
   Scope.check_whole_program prog;
   Scope.check_whole_program prog2;
   run_checked prog no_input (fun res1 ->
@@ -534,7 +534,7 @@ let do_test_dominates_uses = function () ->
 " mut a = 3
   mut b = a
 " in
-  assert (Codemotion.dominates_all_uses (anls prog) 0);
+  assert (Cfg.dominates_all_uses (anls prog) 0);
   let prog = parse_test
 " mut b = 2
  loop:
@@ -543,7 +543,7 @@ let do_test_dominates_uses = function () ->
   branch b loop cont
  cont:
 " in
-  assert (Codemotion.dominates_all_uses (anls prog) 2);
+  assert (Cfg.dominates_all_uses (anls prog) 2);
   let prog = parse_test
 " mut b = 2
  loop:
@@ -554,7 +554,7 @@ let do_test_dominates_uses = function () ->
   branch b loop cont
  cont:
 " in
-  assert (Codemotion.dominates_all_uses (anls prog) 2);
+  assert (Cfg.dominates_all_uses (anls prog) 2);
   let prog = parse_test
 " mut b = 2
  loop:
@@ -565,7 +565,7 @@ let do_test_dominates_uses = function () ->
   branch b loop cont
  cont:
 " in
-  assert (not (Codemotion.dominates_all_uses (anls prog) 5));
+  assert (not (Cfg.dominates_all_uses (anls prog) 5));
   let prog = parse_test
 " mut b = 2
  loop:
@@ -574,7 +574,7 @@ let do_test_dominates_uses = function () ->
   branch b loop cont
  cont:
 " in
-  assert (not (Codemotion.dominates_all_uses (anls prog) 3));
+  assert (not (Cfg.dominates_all_uses (anls prog) 3));
   let prog = parse_test
 " mut b = 2
   branch b a b
@@ -586,8 +586,8 @@ let do_test_dominates_uses = function () ->
  c:
   print b
 " in
-   assert (not (Codemotion.dominates_all_uses (anls prog) 3));
-   assert (not (Codemotion.dominates_all_uses (anls prog) 6))
+   assert (not (Cfg.dominates_all_uses (anls prog) 3));
+   assert (not (Cfg.dominates_all_uses (anls prog) 6))
 
 let do_test_codemotion = function () ->
   let can_move = Codemotion.can_move test_df2.instructions in

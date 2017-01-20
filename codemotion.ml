@@ -1,46 +1,12 @@
 open Instr
-
-let dominates_all_uses (program, cfg, doms, used) pc =
-  let open Cfg in
-  let uses = used pc in
-  if Analysis.InstrSet.is_empty uses then true
-  else
-    let bb_at pc = bb_at cfg pc in
-    let bb_def = bb_at pc in
-    let uses = Analysis.InstrSet.elements uses in
-    let doms_uses = List.map (fun pc ->
-        let bb = bb_at pc in
-        (pc, bb_at pc, doms.(bb.id))) uses in
-    List.for_all (fun (use, bb, doms) ->
-        (* in the same basic block -> fine if def is before use
-         * (eg. linear loop body with both def and use) *)
-        ((bb_def.id = bb.id && use > pc) ||
-         (BasicBlockSet.exists (fun bb ->
-              bb_def.id = bb.id) doms))) doms_uses
-
-let fresh_variable program =
-  let rec collect_vars pc =
-    if pc = Array.length program then TypedVarSet.empty
-    else
-      let vars = Instr.defined_vars program.(pc) in
-      TypedVarSet.union vars (collect_vars (pc+1))
-  in
-  let used = TypedVarSet.untyped (collect_vars 0) in
-  fun var ->
-    let rec find_next i =
-      let new_var = var ^ "." ^ (string_of_int i) in
-      match VarSet.find new_var used with
-      | exception Not_found -> new_var
-      | _ -> find_next (i+1)
-    in
-    find_next 0
+open Analysis
 
 let can_move_analysis (program, scope, cfg, doms, reaching, used) pc
   : Cfg.basic_block option =
   (* 1. Condition: I have a dominator *)
   let open Cfg in
   match bb_at cfg pc with
-  | exception Analysis.DeadCode _ -> None
+  | exception DeadCode _ -> None
   | bb ->
     let instr = program.(pc) in
     match instr with
@@ -54,7 +20,7 @@ let can_move_analysis (program, scope, cfg, doms, reaching, used) pc
         if not (dominates_all_uses (program, cfg, doms, used) pc) then None
         else
           (* 3. Condition: All reaching definitions dominate me *)
-          let reaching_def = Analysis.InstrSet.elements (reaching pc) in
+          let reaching_def = InstrSet.elements (reaching pc) in
           let reaching = List.map (fun pc -> bb_at cfg pc) reaching_def in
           let dominates_me other =
             match BasicBlockSet.find other my_doms with
@@ -87,8 +53,8 @@ let can_move (prog : instruction_stream) : pc -> Cfg.basic_block option =
   let scope = Scope.infer (Scope.no_annotations prog) in
   let cfg = Cfg.of_program prog in
   let doms = Cfg.dominators (prog, cfg) in
-  let reaching = Analysis.reaching prog in
-  let used = Analysis.used prog in
+  let reaching = reaching prog in
+  let used = used prog in
   can_move_analysis (prog, scope, cfg, doms, reaching, used)
 
 let replace_used_var instr old_var new_var =
@@ -139,8 +105,8 @@ let apply (code : instruction_stream) : instruction_stream =
       let scope = Scope.infer (Scope.no_annotations code) in
       let cfg = Cfg.of_program code in
       let doms = Cfg.dominators (code, cfg) in
-      let reaching = Analysis.reaching code in
-      let used = Analysis.used code in
+      let reaching = reaching code in
+      let used = used code in
       let can_move = can_move_analysis (code, scope, cfg, doms, reaching, used) in
 
       let rec get_move_candidate pc =
@@ -152,7 +118,7 @@ let apply (code : instruction_stream) : instruction_stream =
       in
 
       let apply_move code used to_insert old_var new_var remove insert =
-        Analysis.InstrSet.iter (fun pc ->
+        InstrSet.iter (fun pc ->
             code.(pc) <- replace_used_var code.(pc) old_var new_var
           ) used;
         let len = Array.length code in

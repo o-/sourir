@@ -44,7 +44,7 @@ let () =
         let quiet = Array.exists (fun arg -> arg = "--quiet") Sys.argv in
         let program = if Array.exists (fun arg -> arg = "--prune") Sys.argv
           then
-            let opt = Scope.no_annotations (Transform.branch_prune program.instructions) in
+            let opt = Scope.no_annotations (Prune.branch_false program.instructions) in
             if not quiet then Printf.printf "\nAfter branch pruning:\n%s\n" (Disasm.disassemble opt);
             opt
           else program

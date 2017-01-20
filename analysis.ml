@@ -205,3 +205,20 @@ let used prog : pc -> InstrSet.t =
         let all_uses = List.map uses_of defined in
         List.fold_left InstrSet.union InstrSet.empty all_uses
 
+let fresh_variable program =
+  let rec collect_vars pc =
+    if pc = Array.length program then TypedVarSet.empty
+    else
+      let vars = Instr.defined_vars program.(pc) in
+      TypedVarSet.union vars (collect_vars (pc+1))
+  in
+  let used = TypedVarSet.untyped (collect_vars 0) in
+  fun var ->
+    let rec find_next i =
+      let new_var = var ^ "." ^ (string_of_int i) in
+      match VarSet.find new_var used with
+      | exception Not_found -> new_var
+      | _ -> find_next (i+1)
+    in
+    find_next 0
+
