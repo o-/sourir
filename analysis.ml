@@ -74,9 +74,13 @@ let symmetric_dataflow_analysis (next : pc -> pc list)
 let exits program =
   let rec exits pc : Pc.t list =
     if Array.length program = pc then []
+    else if program.(pc) = EndOpt then []
     else
-      let is_exit = successors program pc = [] in
-      if is_exit then pc :: exits (pc + 1) else exits (pc + 1)
+      match program.(pc) with
+      | Invalidate _ -> pc :: exits (pc + 1)
+      | _ ->
+        let is_exit = successors program pc = [] in
+        if is_exit then pc :: exits (pc + 1) else exits (pc + 1)
   in
   exits 0
 
@@ -215,7 +219,7 @@ let fresh_variable program =
   let used = TypedVarSet.untyped (collect_vars 0) in
   fun var ->
     let rec find_next i =
-      let new_var = var ^ "." ^ (string_of_int i) in
+      let new_var = var ^ "_" ^ (string_of_int i) in
       match VarSet.find new_var used with
       | exception Not_found -> new_var
       | _ -> find_next (i+1)

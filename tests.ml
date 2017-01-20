@@ -269,10 +269,10 @@ deopt_entry_l2:
  mut y
  goto deopt_cont_l2
 deopt_cont_l2:
-l2.0:
+l2_0:
  r <- 3
- goto c.0
-c.0:
+ goto c_0
+c_0:
  print r
  stop
 "
