@@ -64,7 +64,7 @@ let next_fresh_label used hint =
     | x -> false
   in
   if is_fresh hint then hint else
-    let l i = hint ^ "." ^ (string_of_int i) in
+    let l i = hint ^ "_" ^ (string_of_int i) in
     let rec next_fresh i =
       let cur = l i in
       if is_fresh cur then cur else next_fresh (i+1) in
@@ -151,3 +151,19 @@ let lift_all (code : instruction_stream) : instruction_stream =
   in
   let all_decls = VarSet.of_list (collect_decls 0) in
   lift_declarations code 0 all_decls
+
+let remove_dead_vars prog =
+  let used = Analysis.required prog in
+  let rec remove_dead_vars pc =
+    let pc' = pc + 1 in
+    if pc = Array.length prog then []
+    else
+      match[@warning "-4"] prog.(pc) with
+      | EndOpt -> Array.to_list (Array.sub prog pc ((Array.length prog) - pc))
+      | _ ->
+        match[@warning "-4"] prog.(pc), Analysis.InstrSet.elements (used pc) with
+        | Decl_const _, [] -> remove_dead_vars pc'
+        | Decl_mut _, [] -> remove_dead_vars pc'
+        | i, _ -> i :: remove_dead_vars pc'
+  in
+  Array.of_list (remove_dead_vars 0)
