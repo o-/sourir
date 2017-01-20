@@ -330,12 +330,12 @@ continue:
 
 
 let test_branch_pruning_exp (prog : program) expected =
-  let prog2 = Transform.branch_prune prog in
-  assert_equal (Disasm.disassemble prog2) expected
+  let prog2 = Transform.branch_prune prog.instructions in
+  assert_equal (Disasm.disassemble_stream prog2) expected
 
 let test_branch_pruning (prog : program) deopt =
   let open Eval in
-  let prog2 = Transform.branch_prune prog in
+  let prog2 = (Scope.no_annotations (Transform.branch_prune prog.instructions)) in
   Scope.check_whole_program prog;
   Scope.check_whole_program prog2;
   run_checked prog no_input (fun res1 ->

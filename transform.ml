@@ -111,12 +111,14 @@ let lift_declarations (code : instruction_stream) (insert : pc) to_lift : instru
   let bb_insert = Cfg.bb_at cfg insert in
   let defs = List.map (fun v -> Decl_mut (v, None)) (VarSet.elements to_lift) in
   let rec lift pos =
-    if pos = Array.length code then []
+    let len = Array.length code in
+    if pos = len then []
+    else if code.(pos) = EndOpt then Array.to_list (Array.sub code pos (len-pos))
     else
+      let instr = code.(pos) in
       begin
         if pos = insert then defs else []
       end @
-      let instr = code.(pos) in
       let declared = declared_vars instr in
       if TypedVarSet.is_empty declared then instr :: lift (pos+1)
       else
@@ -126,20 +128,32 @@ let lift_declarations (code : instruction_stream) (insert : pc) to_lift : instru
           let open Cfg in
           let bb = bb_at cfg pos in
           let doms = doms_at.(bb.id) in
-          match BasicBlockSet.find bb_insert doms with
-          | exception Not_found -> instr :: lift (pos+1)
-          | _ ->
+          let below_scope = BasicBlockSet.exists (fun bb -> bb.id = bb_insert.id) doms in
+          if below_scope || (bb.id == bb_insert.id && insert <= pos) then
             begin match[@warning "-4"] instr with
               | Decl_mut (x, None) -> lift (pos+1)
               | Decl_mut (x, Some exp) -> Assign (x, exp) :: lift (pos+1)
               | _ -> instr :: lift (pos+1)
             end
+          else
+            instr :: lift (pos+1)
   in
   Array.of_list (lift 0)
 
-let branch_prune (prog : program) : program =
-  let scope = Scope.infer prog in
-  let code = prog.instructions in
+let lift_all (code : instruction_stream) : instruction_stream =
+  let rec collect_decls pc =
+    let len = Array.length code in
+    if pc = len then [] else
+      match[@warning "-4"] code.(pc) with
+      | Decl_mut (x, _) -> x :: collect_decls (pc+1)
+      | EndOpt -> []
+      | _ -> collect_decls (pc+1)
+  in
+  let all_decls = VarSet.of_list (collect_decls 0) in
+  lift_declarations code 0 all_decls
+
+let branch_prune (code : instruction_stream) : instruction_stream =
+  let scope = Scope.infer (Scope.no_annotations code) in
   let live_at = Analysis.live code in
   let rec branch_prune pc used_labels pruned landing_pads =
     if pc = Array.length code then (pruned, landing_pads) else
@@ -197,4 +211,4 @@ let branch_prune (prog : program) : program =
   let pruned = Array.of_list (List.rev rev_pruned) in
   let cleaned = Array.of_list (remove_dead_code pruned 0) in
   let final = Array.of_list (remove_empty_jmp cleaned) in
-  Scope.no_annotations (Array.concat (final :: [| EndOpt |] :: List.rev landing_pads))
+  Array.concat (final :: [| EndOpt |] :: List.rev landing_pads)

@@ -131,78 +131,82 @@ let replace_used_var instr old_var new_var =
   | EndOpt
   | Stop -> instr
 
-let rec apply (prog : program) : program =
-  let apply_step (prog : program) : program option =
-    let code = prog.instructions in
-    let scope = Scope.infer prog in
-    let cfg = Cfg.of_program code in
-    let doms = Cfg.dominators (code, cfg) in
-    let reaching = Analysis.reaching code in
-    let used = Analysis.used code in
-    let can_move = can_move_analysis (code, scope, cfg, doms, reaching, used) in
+let apply (code : instruction_stream) : instruction_stream =
+  let code = Transform.lift_all code in
 
-    let rec get_move_candidate pc =
-      if pc = Array.length code then None
-      else if code.(pc) = EndOpt then None
-      else match can_move pc with
-        | None -> get_move_candidate (pc + 1)
-        | Some bb -> Some (pc, bb)
-    in
+  let rec do_apply (code : instruction_stream) : instruction_stream =
+    let apply_step (code : instruction_stream) : instruction_stream option =
+      let scope = Scope.infer (Scope.no_annotations code) in
+      let cfg = Cfg.of_program code in
+      let doms = Cfg.dominators (code, cfg) in
+      let reaching = Analysis.reaching code in
+      let used = Analysis.used code in
+      let can_move = can_move_analysis (code, scope, cfg, doms, reaching, used) in
 
-    let apply_move code used to_insert old_var new_var remove insert =
-      let len = Array.length code in
-      Analysis.InstrSet.iter (fun pc ->
-          code.(pc) <- replace_used_var code.(pc) old_var new_var
-        ) used;
-      if remove < insert then
-        Array.concat [
-          Array.sub code 0 remove;
-          Array.sub code (remove+1) (insert-remove-1);
-          [| to_insert |];
-          Array.sub code insert (len-insert)
-        ]
-      else
-        Array.concat [
-          Array.sub code 0 insert;
-          [| to_insert |];
-          Array.sub code insert (remove-insert);
-          Array.sub code (remove+1) (len-remove-1)
-        ]
-    in
-
-    match get_move_candidate 0 with
-    | None -> None
-    | Some (pc, bb) ->
-      let open Cfg in
-      let used = used pc in
-      let fresh_var = fresh_variable code in
-      let res =
-        match[@warning "-4"] code.(pc) with
-        | Decl_const (x, e) ->
-          let new_var = fresh_var x in
-          apply_move
-            code
-            used
-            (Decl_const (new_var, e))
-            x
-            new_var
-            pc
-            bb.append
-        | Assign (x, e) ->
-          let new_var = fresh_var x in
-          apply_move
-            code
-            used
-            (Decl_mut (new_var, Some e))
-            x
-            new_var
-            pc
-            bb.append
-        | _ -> assert false
+      let rec get_move_candidate pc =
+        if pc = Array.length code then None
+        else if code.(pc) = EndOpt then None
+        else match can_move pc with
+          | None -> get_move_candidate (pc + 1)
+          | Some bb -> Some (pc, bb)
       in
-      Some (Scope.no_annotations res)
-  in
 
-  match apply_step prog with
-  | None -> prog
-  | Some prog -> apply prog
+      let apply_move code used to_insert old_var new_var remove insert =
+        Analysis.InstrSet.iter (fun pc ->
+            code.(pc) <- replace_used_var code.(pc) old_var new_var
+          ) used;
+        let len = Array.length code in
+        if remove < insert then
+          Array.concat [
+            Array.sub code 0 remove;
+            Array.sub code (remove+1) (insert-remove-1);
+            [| to_insert |];
+            Array.sub code insert (len-insert)
+          ]
+        else
+          Array.concat [
+            Array.sub code 0 insert;
+            [| to_insert |];
+            Array.sub code insert (remove-insert);
+            Array.sub code (remove+1) (len-remove-1)
+          ]
+      in
+
+      match get_move_candidate 0 with
+      | None -> None
+      | Some (pc, bb) ->
+        let open Cfg in
+        let used = used pc in
+        let fresh_var = fresh_variable code in
+        let res =
+          match[@warning "-4"] code.(pc) with
+          | Decl_const (x, e) ->
+            let new_var = fresh_var x in
+            apply_move
+              code
+              used
+              (Decl_const (new_var, e))
+              x
+              new_var
+              pc
+              bb.append
+          | Assign (x, e) ->
+            let new_var = fresh_var x in
+            apply_move
+              code
+              used
+              (Decl_mut (new_var, Some e))
+              x
+              new_var
+              pc
+              bb.append
+          | _ -> assert false
+        in
+        Some res
+    in
+
+    match apply_step code with
+    | None -> code
+    | Some code -> do_apply code
+  in
+  do_apply code

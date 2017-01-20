@@ -23,12 +23,12 @@ let bb_at cfg pc =
       else bb_at (id+1) in
   bb_at 0
 
-let of_program program : cfg =
+let of_program (code : Instr.instruction_stream) : cfg =
   let rec next_exit pc =
     let open Instr in
-    if Array.length program = pc then (pc-1, pc-1)
+    if Array.length code = pc then (pc-1, pc-1)
     else
-      match[@warning "-4"] program.(pc) with
+      match[@warning "-4"] code.(pc) with
       | Goto _ | Branch _ | Stop | Invalidate _ -> (pc, pc)
       (* Fall through to another label exits the basic block *)
       | Label _ -> (pc-1, pc)
@@ -43,7 +43,7 @@ let of_program program : cfg =
         else
           (* first bb might start without label *)
           let prepend =
-            match[@warning "-4"] program.(pc) with
+            match[@warning "-4"] code.(pc) with
             | Instr.Label _ -> (pc+1)
             | _ -> pc
           in
@@ -51,7 +51,7 @@ let of_program program : cfg =
           let node = {id = id; entry = pc; exit = exit;
                       prepend = prepend; append = append; succ = []} in
           let acc = node :: acc in
-          let succ = Analysis.successors program exit in
+          let succ = Analysis.successors code exit in
           let succ = List.filter (fun pc -> not (seen acc pc)) succ in
           (* explore cfg depth first to ensure topological order of id *)
           find_nodes (succ @ rest) (id+1) acc
@@ -61,7 +61,7 @@ let of_program program : cfg =
   (* TODO: maybe assign the successors in the above loop
    * but its kinda hard with the order constraints *)
   let update_succ node =
-    let succ_instr = Analysis.successors program node.exit in
+    let succ_instr = Analysis.successors code node.exit in
     let succ = List.map (fun pc -> bb_at cfg pc) succ_instr in
     node.succ <- succ;
   in
