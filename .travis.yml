@@ -10,4 +10,4 @@ env:
    - PRE_INSTALL_HOOK="cd /home/opam/opam-repository && git pull origin master && opam update -u -y"
    - POST_INSTALL_HOOK="sh ./.travis-ci.sh"
  matrix:
-   - DISTRO=debian-testing OCAML_VERSION=4.04.0
+   - PACKAGE=oUnit DISTRO=debian-testing OCAML_VERSION=4.04.0
