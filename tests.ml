@@ -216,14 +216,19 @@ let test_read_print_err_4 = parse_annotated
 "
 
 let do_test_scope_uninitialized = function () ->
-  assert_raises (Scope.UninitializedVariable (VarSet.singleton "x", 2)) (fun () -> ignore (parse_test "
+  begin match parse_test "
      mut x = 1
     loop:
      print x
      clear x
      goto loop
-    "));
-  assert_raises (Scope.UninitializedVariable (VarSet.singleton "x", 2)) (fun () -> ignore (parse_test "
+    " with
+  | exception Scope.SometimesUninitialized (_, _, pc) ->
+    assert (pc = 1)
+  | _ ->
+    assert false
+  end;
+  begin match parse_test "
      mut x = 1
     loop:
      print x
@@ -231,9 +236,13 @@ let do_test_scope_uninitialized = function () ->
     clearit:
      clear x
      goto loop
-    "));
-  (* Positive example: even though one branch cleares x it is restored at the end *)
-  ignore (parse_test "
+    " with
+  | exception Scope.SometimesUninitialized (_, _, pc) ->
+    assert (pc = 1)
+  | _ ->
+    assert false
+  end;
+  begin match parse_test "
      mut x = 1
     loop:
      print x
@@ -243,7 +252,12 @@ let do_test_scope_uninitialized = function () ->
     skip:
      x <- 7
      goto loop
-    ")
+    " with
+  | exception Scope.SometimesUninitialized (_, _, pc) ->
+    assert (pc = 6)
+  | _ ->
+    assert false
+  end
 
 
 

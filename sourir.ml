@@ -33,10 +33,10 @@ let () =
         let l = pc+1 in
         begin match Instr.VarSet.elements xs with
           | [x] -> Printf.eprintf
-                     "%s:%d : Error: Variable %s might be uninitialized.\n%!"
+                     "%s:%d : Error: Variable %s is uninitialized.\n%!"
                      path l x
           | xs -> Printf.eprintf
-                    "%s:%d : Error: Variables {%s} might be uninitialized.\n%!"
+                    "%s:%d : Error: Variables {%s} is uninitialized.\n%!"
                     path l (String.concat ", " xs)
         end;
         exit 1
@@ -75,6 +75,11 @@ let () =
       | Scope.IncompatibleScope (scope1, scope2, pc) ->
         Disasm.pretty_print_segment stderr (name, instrs);
         Scope.explain_incompatible_scope stderr scope1 scope2 pc;
+        flush stderr;
+        exit 1
+      | Scope.SometimesUninitialized (scope1, scope2, pc) ->
+        Disasm.pretty_print_segment stderr (name, instrs);
+        Scope.explain_incompatible_initialization stderr scope1 scope2 pc;
         flush stderr;
         exit 1
       ) program;
