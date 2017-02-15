@@ -63,8 +63,10 @@ let infer instructions : inferred_scope array =
     fun pc -> (res pc).info in
 
   let check_initialized instructions =
-    let open Analysis in
-    let merge pc cur incom = assert (ModedVarSet.equal cur incom); None in
+    let merge pc cur incom =
+      let merge = ModedVarSet.inter cur incom in
+      if ModedVarSet.equal cur merge then None else Some merge
+    in
     let update pc cur =
       let instr = instructions.(pc) in
       let written = Instr.defined_vars instr in
