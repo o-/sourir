@@ -51,7 +51,7 @@ exception IncompatibleScope of inference_state * inference_state * pc
 let infer instructions : inferred_scope array =
   let open Analysis in
   let merge pc cur incom =
-    if not (ScopeInfo.equal cur.info incom.info)
+    if not (ModedVarSet.equal cur.info.declared incom.info.declared)
     then raise (IncompatibleScope (cur, incom, pc))
     else if PcSet.equal cur.sources incom.sources then None
     else Some { info = cur.info; sources = PcSet.union cur.sources incom.sources }
@@ -160,7 +160,6 @@ let explain_incompatible_scope outchan s1 s2 pc =
           "  - the %s %s %a and the %s does not\n"
           name1 verb print_vars diff name2 in
     print_diff "declares" diff.declared;
-    print_diff "defines"  (ModedVarSet.diff diff.defined diff.declared);
   in
   Printf.bprintf buf
     "At instruction %d,\n\
