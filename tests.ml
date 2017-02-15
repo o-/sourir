@@ -231,7 +231,20 @@ let do_test_scope_uninitialized = function () ->
     clearit:
      clear x
      goto loop
-    "))
+    "));
+  (* Positive example: even though one branch cleares x it is restored at the end *)
+  ignore (parse_test "
+     mut x = 1
+    loop:
+     print x
+     branch (x==1) clearit skip
+    clearit:
+     clear x
+    skip:
+     x <- 7
+     goto loop
+    ")
+
 
 
 
