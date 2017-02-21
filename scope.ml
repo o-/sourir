@@ -32,7 +32,6 @@ let drop_annots : annotated_program -> program =
   List.map (fun (name, (instrs, annot)) -> (name, instrs))
 
 exception IncompatibleScope of inference_state * inference_state * pc
-exception SometimesUninitialized of inference_state * inference_state * pc
 
 let infer instructions : inferred_scope array =
   let open Analysis in
@@ -62,25 +61,20 @@ let infer instructions : inferred_scope array =
 
   let check_initialized instructions =
     let merge pc cur incom =
-      if not (ModedVarSet.equal cur.info incom.info)
-      then raise (SometimesUninitialized (cur, incom, pc))
-      else if PcSet.equal cur.sources incom.sources then None
-      else Some { info = cur.info; sources = PcSet.union cur.sources incom.sources }
+      let merged = ModedVarSet.inter cur incom in
+      if ModedVarSet.equal cur merged then None else Some merged
     in
     let update pc cur =
       let instr = instructions.(pc) in
       let written = Instr.defined_vars instr in
-      let info = cur.info in
-      let updated = ModedVarSet.union info written in
+      let updated = ModedVarSet.union cur written in
       let dropped, cleared = Instr.dropped_vars instr, Instr.cleared_vars instr in
       (* dropped variables must also be undefined, to preserve the property
          that only declared variables are defined. *)
-      let final_info = ModedVarSet.diff_untyped updated (VarSet.union dropped cleared) in
-      { sources = PcSet.singleton pc; info = final_info; }
+      ModedVarSet.diff_untyped updated (VarSet.union dropped cleared)
     in
-    let initial_state = { sources = PcSet.empty; info = ModedVarSet.empty; } in
-    let res = Analysis.forward_analysis initial_state instructions merge update in
-    fun pc -> (res pc).info in
+    let initial_state = ModedVarSet.empty in
+    Analysis.forward_analysis initial_state instructions merge update in
 
   let inferred = infer_scope instructions in
   let initialized = check_initialized instructions in
@@ -122,7 +116,7 @@ let check (scope : inferred_scope array) annotations =
   in
   Array.iteri check_at scope
 
-let explain_incompatible_merge explanation_msg final_msg outchan s1 s2 pc =
+let explain_incompatible_scope outchan s1 s2 pc =
   let buf = Buffer.create 100 in
   let print_sep buf print_elem elems sep last_sep =
     let len = Array.length elems in
@@ -157,29 +151,18 @@ let explain_incompatible_merge explanation_msg final_msg outchan s1 s2 pc =
     let print_diff diff =
       if not (ModedVarSet.is_empty diff) then
         Printf.bprintf buf
-          final_msg name1 print_vars diff name2 in
+          "  - the %s declares %a and the %s does not\n"
+          name1 print_vars diff name2 in
     print_diff diff;
   in
   Printf.bprintf buf
-    explanation_msg
+    "At instruction %d,\n\
+     the scope coming from %a and\n\
+     the scope coming from %a\n\
+     are incompatible:\n"
     pc
     print_sources s1.sources
     print_sources s2.sources;
   print_only buf "former" (ModedVarSet.diff s1.info s2.info) "latter";
   print_only buf "latter" (ModedVarSet.diff s2.info s1.info) "former";
   Buffer.output_buffer outchan buf
-
-let explain_incompatible_scope outchan s1 s2 pc =
-  explain_incompatible_merge
-    "At instruction %d,\n\
-     the scope coming from %a and\n\
-     the scope coming from %a\n\
-     are incompatible:\n"
-    "  - the %s declares %a and the %s does not\n"
-    outchan s1 s2 pc
-
-let explain_incompatible_initialization outchan s1 s2 pc =
-  explain_incompatible_merge
-    "At instruction %d when control from %a and %a merges:\n"
-    " - in the %s branch %a is assigned to but in %s one it might be undefined\n"
-    outchan s1 s2 pc

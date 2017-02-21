@@ -77,11 +77,6 @@ let () =
         Scope.explain_incompatible_scope stderr scope1 scope2 pc;
         flush stderr;
         exit 1
-      | Scope.SometimesUninitialized (scope1, scope2, pc) ->
-        Disasm.pretty_print_segment stderr (name, instrs);
-        Scope.explain_incompatible_initialization stderr scope1 scope2 pc;
-        flush stderr;
-        exit 1
       ) program;
 
       let program = Scope.drop_annots program in
