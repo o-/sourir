@@ -2,26 +2,35 @@
 
 x        variables
 
-l        labels
-v        optimization version
+P ::= Function main   ↦ F, (Df ↦ F)*   program:            main function and other functions
+F ::= Segment  active ↦ S, (Ds ↦ S)*   function:           active version and others
+S ::= start ↦ i,           I           segment:            instruction stream with dedicated start
+I ::= (l ↦ i)*                         instruction stream: labeled instructions
 
-s ∈ l    start label
+Df ::= Function f(x, ...)   function declaration
+Ds ::= Segment  s           segment declaration
 
-a        addresses
+f  function name
+s  optimization version
+l  labels
 
-P ::= (v ↦ M)*             program
-M ::= (s ↦ i), I
-      s ∉ I                module
-I ::= (l ↦ i)*             instruction stream
+main      main function
+active    active segment
+start     start label
+
+a  addresses
+
 
 i ::=    instructions
-| const x = e               constant variable
-| mut x = e                 mutable variable
-| x <- e                    assignment
-| branch x l₁ l₂            conditional
-| goto l                    goto
-| print x                   print
-| osr(e, v, l, (x = ee)*)   osr : (can be used for osr-in and osr-out)
+| const x = e                   constant variable
+| mut x = e                     mutable variable
+| x <- e                        assignment
+| branch x l₁ l₂                conditional
+| goto l                        goto
+| print x                       print
+| return x                      return
+| const a = call x_f (x, ...)   call
+| osr(e, s, l, (x = ee)*)       osr : (can be used for osr-in and osr-out)
 
 ee ::=   extended expression
 | e
@@ -31,6 +40,7 @@ e ::=    (simple) expressions
 | lit                   literals
 | x                     variables
 | primop(x, ...)        primitive operation (pure)
+| close f               create closure
 
 lit ::=  litterals
 | nil
@@ -74,42 +84,64 @@ Evaluation of simple expressions:
   eval H E x = (H,E)[x]
   eval H E lit = lit
   eval H E primop(x₁, ..., xₙ) = 〚primop〛((H,E)[x₁], ..., (H,E)[xₙ])
+  eval H E close f = (f, E)
 
 Evaluation of extended expressions
 
   eeval H E ⊥ = ⊥
   eeval H E e = eval H E e
 
+Machine state (P, T, H, E*, C*) :
+  program, trace, heap, environments, continuations
+
 Reduction relation
-  (T, H, E, P, I, l) -> ((T, (H,E)[x]), H, E, P, I, l + 1)
-    when I(l) = print x
+  (P, T, H, E*, C* (f, s, l)) -> (P, (T, (H,E)[x]), H, E*, C* (f, s, l'))
+    when P(f,s,l) = print x
+     and l'      := succ P(f,s) l
 
-  (T, H, E, P, I, l) -> (T, H, E, P, I, l')
-    when I(l) = branch x l₁ l₂
-     and l' := if (H,E)[x] then l₁ else l₂
+  (P, T, H, E*, C* (f, s, l)) -> (P, T, H, E*, C* (f, s, l'))
+    when P(f,s,l) = branch x l₁ l₂
+     and l'      := if (H,E)[x] then l₁ else l₂
 
-  (T, H, E, P, I, l) -> (T, H, (E, x ↦ v), P, I, succ I l)
-    when I(l) = (const x = e)
-     and v := eval H E x
+  (P, T, H, E* E, C* (f, s, l)) -> (P, T, H, E* (E, x ↦ v), C* (f, s, l))
+    when P(f,s,l) = const x = e
+     and v       := eval H E x
+     and l'      := succ P(f,s) l
 
-  (T, H, E, P, I, l) -> (T, (H, a ↦ v), (E, x ↦ a), P, I, succ I l)
-    when I(l) = (mut x = e)
-     and v := eval H E e
+  (P, T, H, E* E, C* (f, s, l)) -> (P, T, (H, a ↦ v), E* (E, x ↦ a), (f, s, l'))
+    when P(f,s,l) = mut x = e
+     and v       := eval H E e
      and a fresh
+     and l'      := succ P(f,s) l
 
-  (T, H, E, P, I, l) -> (T, (H,E)[x] := v, E, P, I, succ I l)
-    when I(l) = (x ← e)
-     and v := eval H E x
+  (P, T, H, E* E, C* (f, s, l)) -> (P, T, (H,E)[x] := v, E* E, (f, s, l'))
+    when P(f,s,l) = x ← e
+     and v       := eval H E x
+     and l'      := succ P(f,s) l
 
-  (T, H, E, P, I, l) -> (T, H, E, P, I, succ I l)
-    when I(l) = osr(e, _, _)
+  (P, T, H, E*, C* (f, s, l)) -> (P, T, H, E* E'', C* (f, s, l) (f', active, start))
+    when P(f,s,l) = const a = call x_f (x, ...)
+     and (f', E') = (H,E)[x_f]
+     and E''     := E'[(x ↦ (H,E)[x])*]
+
+
+  (P, T, H, E* E' E, C* (f', s', l') (f, s, l)) -> (P, T, H, E* E'', C* (f', s', l''))
+    when P(f,s,l)    = return x
+     and P(f',s',l') = const a = call _
+     and v          := (H,E)[x]
+     and E''        := E'[a ↦ v]
+     and l''        := succ P(f',s') l'
+
+  (P, T, H, E* E, C* (f, s, l)) -> (P, T, H, E* E, C* (f, s, l'))
+    when P(f,s,l) = osr(e, _, _)
      and (eval H E e) is not (true)
+     and l'      := succ P(f,s) l
 
-  (T, H, E, P, I, l) -> (T, H, E', P, I', l')
-    when I(l) = osr(e, v, l', (x = ee)*)
+  (P, T, H, E* E, C* (f, s, l)) -> (P, T, H, E* E', C* (f, s', l'))
+    when P(f,s,l) = osr(e, s', l', (x = ee)*)
      and (eval H E e) is (true)
-     and I' := P(v)
-     and E' := (x ↦ (eeval H E ee))*
+     and E'  := (x ↦ (eeval H E ee))*
+
 
 # Scopes
 
