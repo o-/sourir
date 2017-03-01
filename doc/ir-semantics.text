@@ -2,33 +2,42 @@
 
 x        variables
 
-P ::= Segment  active   ↦ S, (Ds ↦ S)*   program:            active version and others
+P ::= Function main[]() ↦ F, (Df ↦ F)*   program:            main function and other functions
+F ::= Segment  active   ↦ S, (Ds ↦ S)*   function:           active version and others
 S ::= start ↦ i,          I              segment:            instruction stream with dedicated start
 I ::= (l ↦ i)*                           instruction stream: labeled instructions
 
 Ds ::= Segment  s                  segment declaration
 
+f  function name
 s  optimization version
 l  labels
 
+main      main function
 active    active segment
 start     start label
 
 a  addresses
 
 i ::=    instructions
-| const x = c                   constant variable
-| mut x = c                     mutable variable
-| x <- c                        assignment
+| const x = ce                  constant variable
+| mut x = ce                    mutable variable
+| x <- ce                       assignment
 | branch e l₁ l₂                conditional
 | goto l                        goto
 | print e                       print
+| return e                      return
 | osr(e, s, l, (x = ee, ...))   osr : (can be used for osr-in and osr-out)
 
 e ::=    (simple) expressions
 | lit                   literals
 | x                     variables
 | primop(x, ...)        primitive operation (pure)
+| close f[e, ...]       create closure
+
+ce ::=   call expression
+| e
+| call e (e, ...)     call
 
 ee ::=   extended expression
 | e
@@ -50,8 +59,12 @@ CC ::=                 evaluation context
 | x <- [.]
 | branch [.] l₁ l₂
 | print [.]
+| return [.]
 | osr([.], s, l, (x = ee, ...))
 | primop (v ..., [.], e ...)
+| close f[v ..., [.], e ...)
+| call [.] (...)
+| call v (v ..., [.], e ...)
 
 # Natural operational semantics
 
@@ -76,7 +89,7 @@ pred I l =
   { l' ∈ I : succ I l' = l }
 
 Linear successor instruction
-  stepi (C* (s, l)) = (C* (succ P(s), l))
+  stepi (C* (f, s, l)) = (C* (succ P(f, s), l))
 
 Lookup (partial) function, returns a v:
   (H,E)[x] :=
@@ -92,6 +105,8 @@ Update (partial) function, returns a S:
   eval P H E x = (H,E)[x]
   eval P H E lit = lit
   eval P H E primop(v, ...) = 〚primop〛(v, ...)
+  eval H E P close f[v, ...] = (f, E[(x ↦ v), ...])
+    when Function [x, ...](...) ∈ dom(P)
 
 ## Evaluation of extended expressions
 
@@ -108,18 +123,31 @@ Update (partial) function, returns a S:
        = step CC[v] (P, T, H, E*, C*)
     when v := eval P H E e
 
+  step   CC[call v_f (v, ...)]
+         (P, T, H, E*, C*)
+       = (P, T, H, E* E'', C* C)
+    when v_f   = (f', E')
+     and P(f') = Function [...](x, ...)
+     and E''  := E'[(x ↦ v), ...]
+     and C    := (f', active, start)
+
+  step   (return v)
+         (P, T, H, E* E E', C* C C')
+       = step cs (P, T, H, E* E, C* C)
+    when cs := P(C)[call(...)/v]
+
   step   (print x)
          (P, T, H, E*, C*)
        = (P, (T, (H,E)[x]), H, E*, stepi C*)
 
   step   (branch v l₁ l₂)
-         (P, T, H, E*, C* (s, l))
-       = (P, T, H, E*, C* (s, l₁))
+         (P, T, H, E*, C* (f, s, l))
+       = (P, T, H, E*, C* (f, s, l₁))
     when v = true
 
   step   (branch v l₁ l₂)
-         (P, T, H, E*, C* (s, l))
-       = (P, T, H, E*, C* (s, l₂))
+         (P, T, H, E*, C* (f, s, l))
+       = (P, T, H, E*, C* (f, s, l₂))
     when v = false
 
   step   (const x = v)
@@ -141,8 +169,8 @@ Update (partial) function, returns a S:
     when v = false
 
   step   osr(e, s', l', (x = ee, ...))
-         (P, T, H, E* E, C* (s, l))
-       = (P, T, H, E* E', C* (s', l'))
+         (P, T, H, E* E, C* (f, s, l))
+       = (P, T, H, E* E', C* (f, s', l'))
     when v   = true
      and E' := (x ↦ eeval P H E ee), ...
 
