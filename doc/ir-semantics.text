@@ -7,8 +7,8 @@ F ::= Segment  active ↦ S, (Ds ↦ S)*   function:           active version an
 S ::= start ↦ i,           I           segment:            instruction stream with dedicated start
 I ::= (l ↦ i)*                         instruction stream: labeled instructions
 
-Df ::= Function f(x, ...)   function declaration
-Ds ::= Segment  s           segment declaration
+Df ::= Function f[x, ...](y, ...)  function declaration
+Ds ::= Segment  s                  segment declaration
 
 f  function name
 s  optimization version
@@ -40,7 +40,7 @@ e ::=    (simple) expressions
 | lit                   literals
 | x                     variables
 | primop(x, ...)        primitive operation (pure)
-| close f               create closure
+| close f[x, ...]       create closure
 
 lit ::=  litterals
 | nil
@@ -72,24 +72,25 @@ Configuration: (T, H, E, P, I, l)
 
 Lookup (partial) function, returns a v:
   (H,E)[x] :=
-    v    if E ∋ (x ↦const v)
-    H(l) if E ∋ (x ↦mut l)
+    v    if E ∋ (x ↦ const v)
+    H(l) if E ∋ (x ↦ mut l)
 
 Update (partial) function, returns a S:
   (H,E)[x ← v] :=
-    H[E(x) ↦ v] if E ∋ (x ↦mut l)
+    H[E(x) ↦ v] if E ∋ (x ↦ mut l)
 
 Evaluation of simple expressions:
 
-  eval H E x = (H,E)[x]
-  eval H E lit = lit
-  eval H E primop(x₁, ..., xₙ) = 〚primop〛((H,E)[x₁], ..., (H,E)[xₙ])
-  eval H E close f = (f, E)
+  eval H E P x = (H,E)[x]
+  eval H E P lit = lit
+  eval H E P primop(x₁, ..., xₙ) = 〚primop〛((H,E)[x₁], ..., (H,E)[xₙ])
+  eval H E P close f[y, ...] = (f, E[(x ↦ y)*])
+    when dom(P) ∋ Function [x, ...](...)
 
 Evaluation of extended expressions
 
-  eeval H E ⊥ = ⊥
-  eeval H E e = eval H E e
+  eeval H E P ⊥ = ⊥
+  eeval H E P e = eval H E P e
 
 Machine state (P, T, H, E*, C*) :
   program, trace, heap, environments, continuations
@@ -105,18 +106,18 @@ Reduction relation
 
   (P, T, H, E* E, C* (f, s, l)) -> (P, T, H, E* (E, x ↦ v), C* (f, s, l))
     when P(f,s,l) = const x = e
-     and v       := eval H E x
+     and v       := eval H E P x
      and l'      := succ P(f,s) l
 
   (P, T, H, E* E, C* (f, s, l)) -> (P, T, (H, a ↦ v), E* (E, x ↦ a), (f, s, l'))
     when P(f,s,l) = mut x = e
-     and v       := eval H E e
+     and v       := eval H E P e
      and a fresh
      and l'      := succ P(f,s) l
 
   (P, T, H, E* E, C* (f, s, l)) -> (P, T, (H,E)[x] := v, E* E, (f, s, l'))
     when P(f,s,l) = x ← e
-     and v       := eval H E x
+     and v       := eval H E P x
      and l'      := succ P(f,s) l
 
   (P, T, H, E*, C* (f, s, l)) -> (P, T, H, E* E'', C* (f, s, l) (f', active, start))
@@ -134,12 +135,12 @@ Reduction relation
 
   (P, T, H, E* E, C* (f, s, l)) -> (P, T, H, E* E, C* (f, s, l'))
     when P(f,s,l) = osr(e, _, _)
-     and (eval H E e) is not (true)
+     and (eval H E P e) is not (true)
      and l'      := succ P(f,s) l
 
   (P, T, H, E* E, C* (f, s, l)) -> (P, T, H, E* E', C* (f, s', l'))
     when P(f,s,l) = osr(e, s', l', (x = ee)*)
-     and (eval H E e) is (true)
+     and (eval H E P e) is (true)
      and E'  := (x ↦ (eeval H E ee))*
 
 
