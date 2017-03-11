@@ -107,7 +107,7 @@ let find (next : pc list array)
   let rec work todo seen =
     match todo with
     | [] -> raise Not_found
-    | pc :: rest when PcSet.exists ((=) pc) seen ->
+    | pc :: rest when PcSet.mem pc seen ->
       work rest seen    (* already checked *)
     | pc :: rest when predicate pc ->
       pc                (* fits predicate *)
@@ -227,4 +227,4 @@ let dominates (instrs : segment) : pc -> pc -> bool =
   let dominators = forward_analysis PcSet.empty instrs merge update in
   fun pc pc' ->
     let doms = dominators pc' in
-    PcSet.exists ((=) pc) doms
+    PcSet.mem pc doms
