@@ -491,7 +491,6 @@ end:
 "
 
 let do_test_codemotion = function () ->
-  let main p : instruction_stream = List.assoc "main" p in
   let t = parse_test "
        goto bla
       loop:
