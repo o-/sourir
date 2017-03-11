@@ -570,6 +570,167 @@ let do_test_codemotion = function () ->
   assert_equal (Disasm.disassemble res) (Disasm.disassemble t);
   ()
 
+let do_test_pull_drop () =
+  let open Rewrite in
+  let main = List.assoc "main" in
+  let test input pc x expected expected_status =
+    let instrs, status = Rewrite.pull_drop (main input) x pc in
+    (* Printf.printf "%s:\n%s\n"
+        (String.concat " " (match status with | Work x -> List.map string_of_int x |_->[""]))
+        (Disasm.disassemble_instr instrs); *)
+    assert (instrs = main expected);
+    assert (status = expected_status)
+  in
+  let t = parse_test "
+      mut e = true
+      mut x
+      branch e l1 l2
+     l1:
+      drop x
+      stop
+     l2:
+      drop x
+    " in
+  let e = parse_test "
+      mut e = true
+      mut x
+      drop x
+      branch e l1 l2
+     l1:
+      stop
+     l2:
+  " in
+  test t 2 "x" e (Pulled_to 2);
+  let t = parse_test "
+      mut e = true
+      mut x
+      branch e l1 l2
+     l1:
+      stop
+     l2:
+      drop x
+    " in
+  test t 2 "x" t Blocked;
+  ()
+
+let do_test_push_drop () =
+  let open Rewrite in
+  let main = List.assoc "main" in
+  let test input pc expected expected_status =
+    match[@warning "-4"] (main input).(pc) with
+    | Drop x ->
+      let instrs, status = Rewrite.push_drop (main input) x pc in
+      (* Printf.printf "%s:\n%s\n"
+          (String.concat " " (match status with | Work x -> List.map string_of_int x |_->[""]))
+          (Disasm.disassemble_instr instrs); *)
+      assert (instrs = main expected);
+      assert (status = expected_status)
+    | _ -> assert(false)
+  in
+  let t = parse_test "
+    const x = 1
+    const y = (x + 1)
+    const z = y
+    drop x
+    " in
+  let e = parse_test "
+    const x = 1
+    const y = (x + 1)
+    drop x
+    const z = y
+  " in
+  test t 3 e (Work [2]);
+  let t = parse_test "
+    const x = 1
+    const y = (x + 1)
+    drop x
+    " in
+  let e = parse_test "
+    const x = 1
+    const y = (x + 1)
+    drop x
+  " in
+  test t 2 e Blocked;
+  let t = parse_test "
+    mut x = 1
+    read x
+    drop x
+    " in
+  let e = parse_test "
+    mut x = 1
+    read x
+    drop x
+  " in
+  test t 2 e Blocked;
+  let t = parse_test "
+    mut x = 1
+    drop x
+    " in
+  let e = parse_test "
+  " in
+  test t 1 e Stop;
+  let t = parse_test "
+    mut x = 1
+    x <- 33
+    drop x
+    " in
+  let e = parse_test "
+    mut x = 1
+    drop x
+  " in
+  test t 2 e (Work [1]);
+  let t = parse_test "
+    mut x = 1
+    branch (x==1) l1 l2
+   l1:
+    stop
+   l2:
+    drop x
+    " in
+  test t 5 t (Need_pull 1);
+  let t = parse_test "
+    mut x = 1
+    branch (x==1) l1 l2
+   l1:
+    goto l2
+   l2:
+    drop x
+    " in
+  let e = parse_test "
+    mut x = 1
+    branch (x == 1) l1 l2_1
+   l1:
+    goto l2
+   l2_1:
+    goto l2
+   l2:
+    drop x
+   " in
+  test t 5 e (Work [7]);
+  let t = parse_test "
+    mut x = 1
+    branch (x==1) e1 e2
+   e1:
+    goto l
+   e2:
+    goto l
+   l:
+    drop x
+   " in
+  let e = parse_test "
+    mut x = 1
+    branch (x==1) e1 e2
+   e1:
+    drop x
+    goto l
+   e2:
+    drop x
+    goto l
+   l:
+   " in
+  test t 7 e (Work [3;6]);
+  ()
+
 let suite =
   "suite">:::
   ["mut">:: run_checked test_mut no_input
@@ -662,6 +823,8 @@ let suite =
    "used">:: do_test_used;
    "liveness">:: do_test_liveness;
    "codemotion">:: do_test_codemotion;
+   "push_drop">:: do_test_push_drop;
+   "pull_drop">:: do_test_pull_drop;
    ]
 ;;
 
@@ -672,119 +835,3 @@ let () =
     | _ -> false in
   if not (List.for_all is_success test_result) then exit 1;;
 
-let do_test_move_drop () =
-  let open Rewrite in
-  let main = List.assoc "main" in
-  let test input pc expected expected_status =
-    let instrs, status = Rewrite.push_drop (main input) pc in
-    (* Printf.printf "%s:\n%s\n"
-        (String.concat " " (match status with | Work x -> List.map string_of_int x |_->[""]))
-        (Disasm.disassemble_instr instrs); *)
-    assert (instrs = main expected);
-    assert (status = expected_status)
-  in
-  let t = parse_test "
-    const x = 1
-    const y = (x + 1)
-    const z = y
-    drop x
-    " in
-  let e = parse_test "
-    const x = 1
-    const y = (x + 1)
-    drop x
-    const z = y
-  " in
-  test t 3 e (Work [2]);
-  let t = parse_test "
-    const x = 1
-    const y = (x + 1)
-    drop x
-    " in
-  let e = parse_test "
-    const x = 1
-    const y = (x + 1)
-    drop x
-  " in
-  test t 2 e Blocked;
-  let t = parse_test "
-    mut x = 1
-    read x
-    drop x
-    " in
-  let e = parse_test "
-    mut x = 1
-    read x
-    drop x
-  " in
-  test t 2 e Blocked;
-  let t = parse_test "
-    mut x = 1
-    drop x
-    " in
-  let e = parse_test "
-  " in
-  test t 1 e Stop;
-  let t = parse_test "
-    mut x = 1
-    x <- 33
-    drop x
-    " in
-  let e = parse_test "
-    mut x = 1
-    drop x
-  " in
-  test t 2 e (Work [1]);
-  let t = parse_test "
-    mut x = 1
-    branch (x==1) l1 l2
-   l1:
-    stop
-   l2:
-    drop x
-    " in
-  test t 5 t Need_pull;
-  let t = parse_test "
-    mut x = 1
-    branch (x==1) l1 l2
-   l1:
-    goto l2
-   l2:
-    drop x
-    " in
-  let e = parse_test "
-    mut x = 1
-    branch (x == 1) l1 l2_1
-   l1:
-    goto l2
-   l2_1:
-    goto l2
-   l2:
-    drop x
-   " in
-  test t 5 e (Work [7]);
-  let t = parse_test "
-    mut x = 1
-    branch (x==1) e1 e2
-   e1:
-    goto l
-   e2:
-    goto l
-   l:
-    drop x
-   " in
-  let e = parse_test "
-    mut x = 1
-    branch (x==1) e1 e2
-   e1:
-    drop x
-    goto l
-   e2:
-    drop x
-    goto l
-   l:
-   " in
-  test t 7 e (Work [3;6]);
-  ()
-
-let () = do_test_move_drop ();;
