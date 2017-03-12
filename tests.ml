@@ -681,7 +681,7 @@ let do_test_push_drop () =
   test t 2 e (Work [1]);
   let t = parse_test "
     mut x = 1
-    branch (x==1) l1 l2
+    branch (1==1) l1 l2
    l1:
     stop
    l2:
@@ -692,13 +692,22 @@ let do_test_push_drop () =
     mut x = 1
     branch (x==1) l1 l2
    l1:
+    stop
+   l2:
+    drop x
+    " in
+  test t 5 t Blocked;
+  let t = parse_test "
+    mut x = 1
+    branch (1==1) l1 l2
+   l1:
     goto l2
    l2:
     drop x
     " in
   let e = parse_test "
     mut x = 1
-    branch (x == 1) l1 l2_1
+    branch (1 == 1) l1 l2_1
    l1:
     goto l2
    l2_1:
@@ -709,7 +718,7 @@ let do_test_push_drop () =
   test t 5 e (Work [7]);
   let t = parse_test "
     mut x = 1
-    branch (x==1) e1 e2
+    branch (1==1) e1 e2
    e1:
     goto l
    e2:
@@ -719,7 +728,7 @@ let do_test_push_drop () =
    " in
   let e = parse_test "
     mut x = 1
-    branch (x==1) e1 e2
+    branch (1==1) e1 e2
    e1:
     drop x
     goto l
