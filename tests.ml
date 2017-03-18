@@ -320,6 +320,46 @@ c:
  clear r
 "
 
+let test_branch_opt_pruned =
+"segment main
+ mut x = 9
+ mut y = 10
+ osr (x == y) main_1 __pc_2 [mut x = x, mut y = y]
+ mut r = 1
+ r <- 3
+ print r
+ clear r
+segment main_1
+ #__Entry
+__pc_0:
+ mut x = 9
+__pc_1:
+ mut y = 10
+__pc_2:
+ mut r = 1
+__pc_3:
+ branch (x == y) l1 l2
+__pc_4:
+l1:
+__pc_5:
+ r <- 2
+__pc_6:
+ goto c
+__pc_7:
+l2:
+__pc_8:
+ r <- 3
+__pc_9:
+ goto c
+__pc_10:
+c:
+__pc_11:
+ print r
+__pc_12:
+ clear r
+"
+
+
 let test_double_loop = parse_test
 "{} mut i
  i <- 0
@@ -350,6 +390,14 @@ continue:
 let test_branch_pruning_exp prog expected =
   let prog2 = Transform.branch_prune prog in
   assert_equal (Disasm.disassemble prog2) expected
+
+let test_opt_branch_pruning_exp prog expected =
+  let prog2 = Transform.optimized_branch_prune prog in
+  let prog2_code = Disasm.disassemble prog2 in
+  if prog2_code <> expected then (
+    Printf.printf "Expected:\n%s\nGot:\n%s\n" expected prog2_code;
+    assert (false))
+  else ()
 
 let test_branch_pruning prog deopt =
   let open Eval in
@@ -696,6 +744,7 @@ let suite =
      (Scope.drop_annots test_broken_scope_5);
    "parser_scope1">:: test_parse_disasm "segment x\n{a, b} print x\n{a,x,...} #asdf\n";
    "branch_pruning">:: (fun () -> test_branch_pruning_exp test_branch test_branch_pruned);
+   "branch_pruning_opt">:: (fun () -> test_opt_branch_pruning_exp test_branch test_branch_opt_pruned);
    "predecessors">:: do_test_pred;
    "branch_pruning_eval">:: (fun () -> test_branch_pruning test_branch None);
    "branch_pruning_eval2">:: (fun () -> test_branch_pruning (test_sum 10) (Some "continue"));
@@ -707,6 +756,7 @@ let suite =
    "min_lifetimes">:: do_test_minimize_lifetime;
    ]
 ;;
+
 
 let () =
   let test_result = run_test_tt_main suite in

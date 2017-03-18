@@ -252,6 +252,21 @@ let used_vars = function
     let exps_vars = List.map expr_vars exps in
     List.fold_left VarSet.union (expr_vars e) exps_vars
 
+let changed_vars = function
+  | Decl_const (x, _)
+  | Decl_mut (x, _)
+  | Assign (x, _)
+  | Drop x
+  | Read x
+  | Clear x -> VarSet.singleton x
+  | Branch _
+  | Label _
+  | Goto _
+  | Comment _
+  | Print _
+  | Osr _
+  | Stop -> VarSet.empty
+
 type 'a dict = (string * 'a) list
 
 type segment = instruction_stream

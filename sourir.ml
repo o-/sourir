@@ -15,6 +15,7 @@ let () =
     in
     let quiet = Array.exists (fun arg -> arg = "--quiet") Sys.argv in
     let prune = Array.exists (fun arg -> arg = "--prune") Sys.argv in
+    let opt_prune = Array.exists (fun arg -> arg = "--optprune") Sys.argv in
     let codemotion = Array.exists (fun arg -> arg = "--cm") Sys.argv in
     let lifetime = Array.exists (fun arg -> arg = "--lifetime") Sys.argv in
 
@@ -91,6 +92,14 @@ let () =
         else program
       in
 
+      let program = if opt_prune
+        then
+          let opt = Transform.optimized_branch_prune program in
+          if not quiet then Printf.printf "\n** After speculative branch pruning:\n%s" (Disasm.disassemble opt);
+          opt
+        else program
+      in
+
       let program = if codemotion
         then
           let opt = Transform.hoist_assignment program in
@@ -106,7 +115,6 @@ let () =
           opt
         else program
       in
-
       List.iter (fun (name, instrs) ->
         Scope.check (Scope.infer instrs) (Array.map (fun _ -> None) instrs)) program;
 

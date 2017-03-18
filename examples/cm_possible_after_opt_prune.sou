@@ -1,0 +1,27 @@
+  mut value
+  mut op
+  read value
+  read op
+  mut sum = 1
+  mut temp
+ loop_head:
+   branch (value == 10) end loop
+  loop:
+   branch (op == 1) op_1 check_op_1
+  check_op_1:
+   branch (op != 2) invalid_op op_2
+  invalid_op:
+   stop
+  op_1:
+   temp <- value
+   sum <- (sum+temp)
+   goto loop_tail
+  op_2:
+   temp <- 1
+   sum <- (sum+temp)
+   goto loop_tail
+ loop_tail:
+   value <- (value + 1)
+   goto loop_head
+ end:
+  print sum
