@@ -2,8 +2,8 @@
 
 x        variables
 
-P ::= Segment  active   ↦ S, (Ds ↦ S)*   program:            active version and others
-S ::= start ↦ i,          I              segment:            instruction stream with dedicated start
+P ::= Segment  active   ↦ M, (Ds ↦ M)*   program:            active version and others
+M ::= start ↦ i,          I              segment:            instruction stream with dedicated start
 I ::= (l ↦ i)*                           instruction stream: labeled instructions
 
 Ds ::= Segment  s                  segment declaration
@@ -83,7 +83,7 @@ Lookup (partial) function, returns a v:
     v    if E ∋ (x ↦ const v)
     H(l) if E ∋ (x ↦ mut l)
 
-Update (partial) function, returns a S:
+Update (partial) function, returns an H:
   (H,E)[x ← v] :=
     H[E(x) ↦ v] if E ∋ (x ↦ mut l)
 
