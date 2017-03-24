@@ -1,7 +1,9 @@
 # Inserting Assumptions
 
-This assumes a subset of the language: no functions, no mut cells, two segments
-per program, and only one osr per label.
+The following assumes a subset of the language: no functions, no mut cells, two
+segments per program, the first segment is the currently active, osr always goes
+from segment 1 to segment 2, there is one instruction and at most one osr per
+label and the osr occurs before the other instruction.
 
     P ::= (I, I)            - program
     I ::= (l ↦ g; i)*       - guarded instruction
@@ -30,7 +32,7 @@ We say `P := (I₂, I₁)` is a valid speculatively optimized program iff
     (I₂, I₁) ≈ I₁
     ∀ l-checkpoint ∈ dom I₂
       (I₂, I₁) : l ↦ I₂{l} ✓
-    ------------------------
+    ------------------------ (✓)
     (I₂, I₁) ✓
 
 A checkpoint is a label `l` with non-empty guard `I{l} ≠ ⊥`.
@@ -40,30 +42,67 @@ Checkpoints are valid if Δ is consistent with some bisimulation `(I₂, I₁) �
     ∃ bisimulation relation for (I₂, I₁) ≈ I₁  st.
       ∀ (P, I₂, T, H, E, l) ~ (P, I₁, T', H', E', l')
         ⇒ E' = ΔE
-    ---------------------------------------------------
+    --------------------------------------------------- (g✓)
     (I₂, I₁) : l ↦ osr (e l' Δ) ✓
 
 Checkpoints can be initialized with `osr ⊥ l {x = x | ∀ x ∈ S(I, l)}`. Those are
-called empty.
+called *initial checkpoints*.
 
 Finally, let `speculate` be the mechanism to add an assumption `e` at `l`
 
     speculate (e, l, I) =
-      let osr (e', l', I', Δ) = I{l}
-      I{l ↦ osr (!e || e', l', I', Δ)}
+      let osr (e', l', Δ) = I{l}
+      I{l ↦ osr (!e || e', l', Δ)}
 
-## Base case
+## Inserting assumptions
 
-given
+First we want to be able to add an assumption to a not yet optimized program.
 
-    P = (I₁, I₁)  - program with no optimizations applied
+*Lemma 1*
 
-*Thm*
+    I - with only initial checkpoints
+    e - valid
+    l - initial checkpoint
+    I' := speculate (e, l, I₁)
+    ---------------------------------
+    (I', I) ✓
 
-    ∀ e-valid, l-empty checkpoint
-      I₂ := speculate (e, l, I₁)
-      P' := (I₂, I₁)
-      P ≈ P'
+We want to add further assumptions to an already optimized program.
+
+*Thm 1*
+
+    (I₂, I₁) ✓
+    e - valid
+    l - checkpoint
+    I' := speculate (e, l, I₁)
+    --------------------------
+    (I', I₁) ✓
+
+Note that the input to *Thm 1* is any valid optimized program -- not just
+programs produced by itself.
+
+From *L1* and *T1* it follows that an arbitrary chain of assumption insertion
+is valid if every insertion point is a checkpoint.
+
+*Corollary 1*
+
+    I
+    l₁, l₂, ..., lₙ - initial checkpoints in I
+    e₁, e₂, ..., eₙ - valid assumptions at corresponding l
+    ------------------------------------------------------
+    I ≈ (... ° speculate e₂ l₂ ° speculate e₁ l₁) I
+
+### Proofs
+
+*Lemma 1*
+
+There exists a (trivial) bisimulation between `P` and `P'`.
+
+* at position `l' ≠ l` the states remain in sync since `I₁(l') = I₂(l')`.
+* at position `l' = l` the osr instruction is a noop
+  since `S(I₁, l) = S(I₂, l)` and Δ is the identity function.
+
+TODO: Proof for *Thm 1*
 
 ### Example
 
@@ -80,30 +119,6 @@ given
       5:                             5:
           stop                           stop
 
-### Proof
-
-There exists a (trivial) bisimulation between `P` and `P'`.
-
-* at position `l' ≠ l` the states remain in sync since `I₁(l') = I₂(l')`.
-* at position `l' = l` the osr instruction is a noop
-  since `S(I₁, l) = S(I₂, l)` and Δ is the identity function.
-
-## Inductive case
-
-given
-
-    (I₂, I₁) = P ✓  - program with correct speculative optimizations
-
-*Thm*
-
-    ∀ e-valid, l-checkpoint
-      I₂ := speculate (e, l, I₁)
-      P' := (I₂, I₁)
-      P ≈ P'
-
-### Proof
-
-TODO
 
 # Non-Reordering Transformations
 
@@ -151,12 +166,15 @@ Assume false:
 
 ## Composition
 
-Non-reordering transformations commute with speculate iff
-observable refinements are composed with Δ's.
+Non-reordering transformations compose with speculate iff the refinements they
+define are composed with all Δ's.
 
 Proof: TODO
 
-## Example
+### Example
+
+The following is an example for the chain of optimizations
+`speculate; branch prune; const prop; speculate; branch prune`
 
 Input program
 
