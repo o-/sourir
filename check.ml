@@ -19,7 +19,6 @@ exception InvalidNumArgs of pc
 exception InvalidArgument of pc * argument
 exception MissingReturn
 
-
 module IdentifierSet = Set.Make(Identifier)
 
 let well_formed prog =
@@ -117,9 +116,9 @@ let well_formed prog =
       | Decl_mut (_, None)
       | Drop _ | Clear _ | Read _
       | Label _ | Goto _ | Comment _ -> ()
-      | Osr (e, _, _, _, osr) ->
-        check_expr e;
-        List.iter check_osr osr
+      | Osr {cond; map} ->
+        check_expr cond;
+        List.iter check_osr map
     in
 
     (* Check correctness of calls and osrs *)
@@ -137,11 +136,12 @@ let well_formed prog =
         | _ -> ()
         end;
         check_fun_ref instr
-      | Osr (e, f, v, l, osr) ->
-        (* function and version mentioned in the osr need to exist *)
-        let func = lookup_fun f in
-        let vers = lookup_version func v in
-        let _ = Instr.resolve vers.instrs l in
+      | Osr {target = {func; version; label}} ->
+        (* check if the function exists and if the actual arguments
+         * are compatible with the formals *)
+        let func = lookup_fun func in
+        let vers = lookup_version func version in
+        let _ = Instr.resolve vers.instrs label in
         check_fun_ref instr
       | _ -> check_fun_ref instr
     in

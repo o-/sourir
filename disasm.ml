@@ -50,16 +50,16 @@ let disassemble_instrs buf ?(format_pc = no_line_number) (prog : instruction_str
     | Goto label                      -> pr buf " goto %s" label
     | Print exp                       -> pr buf " print "; dump_expr exp
     | Read var                        -> pr buf " read %s" var
-    | Osr (exp, f, v, l, vars)        ->
+    | Osr {cond; target = {func; version; label}; map} ->
       pr buf " osr ";
-      dump_expr exp;
-      pr buf " %s %s %s [" f v l;
+      dump_expr cond;
+      pr buf " (%s, %s, %s) [" func version label;
       let dump_var = function
         | Osr_const (x, e) -> pr buf "const %s = " x; dump_expr e;
         | Osr_mut (x, y)   -> pr buf "mut %s = %s" x y;
         | Osr_mut_undef x  -> pr buf "mut %s" x
       in
-      dump_comma_separated dump_var vars;
+      dump_comma_separated dump_var map;
       pr buf "]"
     | Comment str                     -> pr buf " #%s" str
     end;

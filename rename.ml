@@ -84,10 +84,8 @@ let uses_in_instruction old_name new_name instr : instruction =
     Print (in_expression exp)
   | Branch (exp, l1, l2) ->
     Branch (in_expression exp, l1, l2)
-  | Osr (exp, f, v, l, osrs) ->
-    Osr (in_expression exp, f, v, l,
-         List.map in_osr osrs)
-
+  | Osr {cond; target; map} ->
+    Osr {cond = in_expression cond; target; map = List.map in_osr map}
   | Decl_mut (x, None)
   | Read x ->
     assert (x != old_name);

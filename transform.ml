@@ -69,7 +69,7 @@ let branch_prune (func : afunction) : afunction =
               (ModedVarSet.elements scope)
           in
           branch_prune pc'
-            (Goto l2 :: Osr (exp, func.name, version.label, l1, osr) :: acc)
+            (Goto l2 :: Osr {cond=exp; target={func=func.name; version=version.label; label=l1}; map=osr} :: acc)
         | i ->
           branch_prune pc' (i::acc)
         end

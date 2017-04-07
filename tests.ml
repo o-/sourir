@@ -291,7 +291,7 @@ version anon_1
  mut x = 9
  mut y = 10
  mut r = 1
- osr (x == y) main anon l1 [mut r, mut x, mut y]
+ osr (x == y) (main, anon, l1) [mut r, mut x, mut y]
  r <- 3
  print r
  clear r
@@ -1262,6 +1262,23 @@ let test_functions () =
     |pr} 22);
   ();;
 
+let test_deopt () =
+  let test str n =
+    run (parse str) no_input (returns (Int n)) () in
+  test {pr|
+    function main ()
+    version a
+     const x = 1
+     osr (x==1) (main, b, l) [const y=42]
+     return x
+
+    version b
+     const y = 2
+    l:
+     return y
+  |pr} 42;
+  ()
+
 let suite =
   "suite">:::
   ["mut">:: run test_mut no_input
@@ -1328,7 +1345,7 @@ let suite =
    "parser3">:: test_parse_disasm  ("const x = (y + x)\n");
    "parser4">:: test_parse_disasm  ("x <- (x == y)\n");
    "parser5">:: test_parse_disasm  ("# asdfasdf\n");
-   "parser5b">:: test_parse_disasm ("osr (x == y) f v l [const x = x, mut y = x, mut v, const x = (1+2)]\nl:\n");
+   "parser5c">:: test_parse_disasm ("osr (x==1) (f, v, l) [const x = x, mut y = x, mut v, const x = (1+2)]\nl:\n");
    "parser6">:: test_parse_disasm  ("branch (x == y) as fd\n");
    "parser7">:: test_parse_disasm  ("const x = (y + x)\n x <- (x == y)\n# asdfasdf\nbranch (x == y) as fd\n");
    "parser8">:: test_parse_disasm_file "examples/sum.sou";
@@ -1353,6 +1370,7 @@ let suite =
    "pull_drop">:: do_test_pull_drop;
    "move_drop">:: do_test_drop_driver;
    "test_functions">:: test_functions;
+   "test_deopt">:: test_deopt;
    ]
 ;;
 

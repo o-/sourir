@@ -46,14 +46,15 @@ let const_prop (func : afunction) : afunction =
       Assign (y, replace e)
     | Branch (e, l1, l2) -> Branch (replace e, l1, l2)
     | Print e -> Print (replace e)
-    | Osr (exp, f, v, l, env) ->
+    | Osr {cond; target; map} ->
       (* Replace all expressions in the osr environment. *)
-      let env' = List.map (fun osr_def ->
+      let map = List.map (fun osr_def ->
         match[@warning "-4"] osr_def with
         | Osr_const (y, e) -> Osr_const (y, replace e)
-        | _ -> osr_def) env
+        | _ -> osr_def) map
       in
-      Osr (replace exp, f, v, l, env')
+      let cond = replace cond in
+      Osr {cond; target; map}
     | Drop y
     | Decl_mut (y, None)
     | Clear y
