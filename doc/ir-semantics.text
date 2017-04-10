@@ -28,11 +28,14 @@ i ::=    instructions
 | call x = e (arg*)             function call
 | mut x = e                     mutable variable
 | x <- e                        assignment
+| x.n <- e                      tuple update
 | branch e l₁ l₂                conditional
 | goto l                        goto
 | print e                       print
 | return e                      return
 | osr(e, f, lᵥ, l, osr-map*)    osr : (can be used for osr-in and osr-out)
+
+n - tuple index name
 
 arg ::=
 | e
@@ -41,6 +44,8 @@ arg ::=
 e ::=     expression
 | se                    simple expression
 | primop(se*)           primitive operation (pure)
+| <n:se*>               tuple ctr
+| se.n                  tuple access
 
 se ::=    simple expressions
 | lit                   literals
@@ -51,10 +56,12 @@ lit ::=  literals
 | nil
 | true | false
 | 0 | 1 | 2 | ...
+| "strings"
 
 v :=     values
 | lit                   literals
 | f                     function reference
+| <n:v*>                tuples
 
 (Note: heap adresses are not values)
 
@@ -107,6 +114,11 @@ Update (partial) function, returns an H:
   eval P H E se          = simple-eval P H E se
   eval P H E primop(se*) = 〚primop〛(v*)
     where v := simple-eval P H E se
+  eval P H E <n:se*>      = <n:v*>
+    where v := simple-eval P H E se
+  eval P H E se.n          = vₙ
+    where v := simple-eval P H E se
+      and v = <...,n:vₙ, ...>
 
 ## Osr transformation of environment
 
@@ -154,6 +166,13 @@ Update (partial) function, returns an H:
   step   (x ← e) (P, I, T, H, E, l)
        = (I, T, (H,E)[x ← v], E, succ I l)
     when v := eval P H E e
+
+  step   (x.n ← e) (P, I, T, H, E, l)
+       = (I, T, (H,E)[x ← v'], E, succ I l)
+    when vₐ := eval P H E e
+     and v   = (H,E)[x]
+     and v   = <..., n:vₙ, ...>
+     and v'  = <..., n:vₐ, ...>
 
   step   (print e) (P, I, T, H, E, l)
        = (I, (T, v), H, E, succ I l)
