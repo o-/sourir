@@ -18,26 +18,31 @@ Reserved Names:
   start     start label      (execution of function starts here)
 
   formal ::=      formal argument
-  | const x
-  | mut x
+  | t x₀
 
   a  addresses
 
   i ::=    instructions
-  | const x = e                   constant variable
-  | mut x = e                     mutable variable
-  | drop x                        drop a variable from scope
-  | clear x                       de-initialization of a mutable
-  | x <- e                        assignment
-  | x[e] <- e                     array assignment
+  | ref xⁿ = ref e                ssa variable
+  | val xⁿ = e | e (arg*)         ssa variable
+  | t xⁿ = φ(xⁱ*)                 phi node
+  | drop xⁿ                       drop a variable from scope
+  | clear xⁿ                      de-initialization of a mutable
+  | xⁿ <- e                       assignment
+  | xⁿ[e] <- e                    array assignment
   | branch e l₁ l₂                conditional
   | goto l                        goto
   | print e                       print
   | return e                      return
-  | call x = e (arg*)             function call
   | osr(e, f, lᵥ, l, osr-map*)    osr : (can be used for osr-in and osr-out)
 
-  arg ::= e | &x
+  t ::=    storage
+  | val
+  | ref
+
+Storage modifier annotations are checked at compile time and erased at runtime
+
+  arg ::= e | &xⁱ
 
 A function argument is either an arbitrary expression `x` or `&x`,
 which references a mutable variable `x`; the function declaration is
@@ -51,12 +56,12 @@ the function has returned.
   | primop(se*)           primitive operation (pure)
   | array(se)             empty array constructor
   | [se*]                 array constructor
-  | x[se]                 array index
-  | length(x)             array length
+  | xⁿ[se]                array index
+  | length(xⁿ)            array length
 
   se ::=    simple expressions
   | lit                   literals
-  | x                     variables
+  | xⁿ                    variables
   | 'f                    create function reference
 
   lit ::=  literals
@@ -74,15 +79,15 @@ mentioned, but &x can be used to alias the mutable variable x in an
 osr or function call.
 
   osr-map ::=    osr mapping declaration
-  | const x = e
-  | mut x
-  | mut x = &x
-  | mut x = e
+  | ref x = ref e
+  | ref x = &xⁱ
+  | ref x = ⊥
+  | val x = e
 
 # Natural operational semantics
 
-  E ::= (x ↦ val v | x ↦ ref a | x ↦ ⊥)*  lexical environment
-  H ::= (a ↦ v)                           mutable heap
+  E ::= (x ↦ val v | x ↦ ref a)*  lexical environment
+  H ::= (a ↦ v | a ↦ ⊥)                   mutable heap
 
   T ::= (lit)*                    output trace
 
@@ -116,7 +121,7 @@ Update (partial) function, returns an H:
 
 ## Evaluation of (simple) expressions:
 
-  simple-eval P H E x   = (H,E)[x]
+  simple-eval P H E xⁱ  = (H,E)[x]
   simple-eval P H E lit = lit
   simple-eval P H E 'f  = f
     where Df ∈ dom P
@@ -133,60 +138,36 @@ Update (partial) function, returns an H:
       and v  = [v₁..., vₙ, ...]
   eval P H E array(se)   = [nil⁽ⁿ⁾]
     where n := simple-eval P H E se
-  eval P H E length(x)   = n
+  eval P H E length(xⁱ)  = n
     where v := (H,E)[x]
       and v  = [v₁..., vₙ]
 
-## Environment actions (variable binding, function call, osr)
-
-`build-env H E def` builds a new heap/environment *fragment* from
-a definition intepreted in the existing context (H,E).
-
-  build-env H E (const x = e) = (∅, [x ↦ val v])
-    where v := eval P H E e
-  build-env H E (mut x)       = ([a ↦ ⊥], [x ↦ ref a])
-    where a fresh
-  build-env H E (mut x = e)   = ([a ↦ v], [x ↦ ref a])
-    where a fresh
-      and v := eval P H E e
-  build-env H E (mut x = &y)  = (∅, [x ↦ ref a])
-    where E ∋ (y ↦ ref a)
-
-`extend-env H E def` extends the runtime context `(H,E)` with the
-fragment generated from `def` – in particular it returns an extended
-lexical environment `E'`.
-
-  extend-env H E def := (H, E) + build-env H E def
-
-`replace-env H E def*` creates a new lexical environment `E'` from
-scratch (it does not extend the input environment `E`) from the list
-of definitions `def*`, interpreted/evaluated in `E`. The heap `H` is
-extended with the new heap fragment into a new heap `H'`.
-
-  replace-env H E def* := (H, ∅) + (build-env H E def)*
-
 ## One step reduction
 
-  step   (const x = e) (P, I, T, H, E, l)
-       = (I, T, H', E', succ I l)
-   where (H', E') := extend-env H E (const x = e)
+  step   (xⁱ = e) (P, I, T, H, E, l)
+       = (I, T, H, E[x ↦ val v], succ I l)
+    when v := eval P H E e
 
-  step   (mut x = e) (P, I, T, H, E, l)
-       = (I, T, H', E', succ I l)
-   where (H', E') := extend-env H E (mut x = e)
+  step   (xⁱ = ref e) (P, I, T, H, E, l)
+       = (I, T, H[a ↦ v], E[x ↦ ref a], succ I l)
+    when v := eval P H E e
+     and a - fresh
 
-  step   (x ← e) (P, I, T, H, E, l)
+  step   (xⁱ = φ(...)) (P, I, T, H, E, l)
+       = (I, T, H, E, succ I l)  # nop
+
+  step   (xⁱ ← e) (P, I, T, H, E, l)
        = (I, T, (H,E)[x ← v], E, succ I l)
     when v := eval P H E e
 
-  step   (clear x) (P, I, T, H, E, l)
+  step   (clear xⁱ) (P, I, T, H, E, l)
        = (I, T, (H,E)[x ← ⊥], E, succ I l)
 
-  step   (drop x) (P, I, T, H, E, l)
+  step   (drop xⁱ) (P, I, T, H, E, l)
        = (I, T, H, E', succ I l)
     when E' := E \ {x}
 
-  step   (x[eᵢ] ← eₐ) (P, I, T, H, E, l)
+  step   (xⁱ[eᵢ] ← eₐ) (P, I, T, H, E, l)
        = (I, T, (H,E)[x ← v'], E, succ I l)
     when n  := eval P H E eᵢ
      and vₐ := eval P H E eₐ
@@ -205,7 +186,7 @@ extended with the new heap fragment into a new heap `H'`.
                if v = false then l₂
 
   step   osr(e, f^, lᵥ^, l^, (osr-map*)) (P, I, T, H, E, l)
-       = (I', T, H', E', l')
+       = (I', T, H+(H'*), E'*, l')
     when v := eval P H E e
      and if v = false then
          I' := I
@@ -217,70 +198,131 @@ extended with the new heap fragment into a new heap `H'`.
          Df  = Function f^ (formal*)
          I' := P(Df, lᵥ^)
          l' := l^
-         (H', E') := replace-env osr-map
+         (E', H')* := eval-osr-map osr-map
+
+  eval-osr-map P H E (y = &z)    = (y ↦ ref a, ∅)
+    when E ∋ (z ↦ ref a)
+  eval-osr-map P H E (y = ref e) = (y ↦ ref a, a ↦ v)
+    when v := eval P H E e
+     and a - fresh
+  eval-osr-map P H E (y = ⊥)     = (y ↦ ref a, a ↦ ⊥)
+    when a - fresh
+  eval-osr-map P H E (y = e)     = (y ↦ val v, ∅)
+    when v := eval P H E e
 
 ## Reduction relation '-->'
 
   (P, C*) : (I, T, H, E, l) --> (P, C*) : step I(l) (P, I, T, H, E, l)
 
   (P, C*) : (I, T, H, E, l) --> (P, (C*, C')) : (I', T, H', E', start)
-    when I(l) = (call x = e (arg*))
+    when I(l) = (var xⁿ = e (arg*))
      and f  := eval P H E e
      and Df ∈ dom P
-     and Df  = Function f ((mod y)*)
+     and Df  = Function f ((t y)*)
      and I' := hd P(Df)
-     and (H',E') := replace-env H E (mod y = arg)*
+     and E' := (eval-call-arg P H E (t y) arg)*
      and C' := (x, E, I, succ I l)
 
   (P, (C*, C')) : (I, T, H, E, l) --> (P, C*) : (I', T, H, E'', l')
     when I(l) = (return e)
      and v   := eval P H E e
      and C'   = (x', E', I', l')
-     and E'' := E'[x' ↦ v]
+     and E'' := E'[x' ↦ var v]
+
+  eval-call-arg P H E (ref y) &z  = (y ↦ ref a)
+    when E ∋ (z ↦ ref a)
+  eval-call-arg P H E (val y) e   = (y ↦ val v)
+    when v := eval P H E e
 
 # Scopes
 
 declares i =
-  | mut x _         -> [x]
-  | const x _       -> [x]
-  | _               -> []
+  | t xⁿ = _         -> [xⁿ ↦ t]
 
 requires i =
-  | mut x = e
-  | const x = e
-  | osr (e, f, lᵥ, l, (x = ee)*)
-                    -> vars(e) ∪ vars(ee)*
-  | x <- e          -> x :: vars(e)
-  | branch x _
-  | print x         -> [x]
-  | _               -> []
+  | t xⁿ = e
+  | t xⁿ = ref e       ->
+      vars(e)
+  | t xⁿ = e (arg*)    ->
+      vars(e) ∪ ⋃vars(arg)*
+  | t xⁿ = φ(xⁱ*)      ->
+      ∅
+  | xⁿ[e₁] <- e₂       ->
+      xⁿ :: vars(e₁) ∪ vars(e₂)
+  | xⁿ <- e            ->
+      xⁿ :: vars(e)
+  | print e
+  | return e
+  | clear x
+  | drop x             ->
+      [x*]  // TODO Better notation, requires some xⁿ in scope
+  | branch e l₁ l₂     ->
+      vars(e)
+  | osr(e, f, lᵥ, l, osr-map*) ->
+      vars(e) ∪ ⋃vars(osr-map)*
+
+requires_typed i =
+  | t xⁿ = e (arg*) ->
+      ∀ &xⁱ ∈ arg*, (xⁱ ↦ ref)
+  | osr(e, f, lᵥ, l, osr-map*) ->
+      ∀ &xⁱ ∈ osr-map*, (xⁱ ↦ ref)
+  | t xⁿ = φ(xⁱ*) ->
+      (xⁱ ↦ t)*
+  | xⁿ[e₁] <- e₂
+  | xⁿ <- e            ->
+      (xⁿ ↦ ref)
+  | clear xⁱ
+  | drop xⁱ            ->
+      (xⁱ ↦ ref)
 
 removes i =
-  | drop x -> [x]
-  | _      -> []
+  | drop x        -> x*   // TODO Better notation, removes all xⁿ in scope
+  | t xⁿ = φ(xⁱ*) -> xⁱ*
 
-scope S ::= x*
-scope assignment A ::= ((v, l) → S)*
+
+scope S ::= (x → t)*
+scope assignment (in scopes and out scopes
+  Ai ::= ((v, l) → S)*
+  Ao ::= ((v, l) → S)*
 
 ## Scoping judgment
 
-This judgment just classifies a valid scope assignment A for
-a program P.
+TODO: Fix for functions
 
-  ∀(v → M) ∈ P:   A, P ⊨d v → M
-  ----------------------------
-            A, P ⊨d
+This judgment just classifies a valid scope assignment A for a program P.
+Every instruction has an in and out scope. The out scope is local to the
+instruction, the in scope is the pointwise merge of all in scopes of the
+predecessors.
 
-  ∀(l → i) ∈ M:   A, P ⊨d v, l → i
-  -------------------------------
-         A, P ⊨d v → M
+  ∀(v → V) ∈ P:   Ai, Ao, P ⊨d v → V
+  ----------------------------------
+            Ai, Ao, P ⊨d
 
-  requires i ⊆ A(v,l)
-  ∀l' ∈ succ(P(v),l),  A(v,l) ∪ declares i \ removes i = A(v,l')
-  A, P ⊨d i : A(v,l)
+  ∀(l → i) ∈ V:   Ai, Ao, P ⊨d v, l → i
+  --------------------------------------
+         Ai, Ao, P ⊨d v → V
+
+
+  Ai(v,l) = ⋃ merge { Ao(v,l') : l' ∈ pred(P(v),l) }
+  requires i ⊆ dom(Ai(v,l))
+  requires_typed i ⊆ Ai(v,l)
+  Ao(v,l) = Ai(v,l) ∪ declares i \ removes i
+  A, P ⊨d i : Ai(v,l)
   pred(P(v), l) = ∅  ⇒  i = start
   -----------------------------------------------------------
   A, P ⊨d v, l → i
+
+If an instruction has multiple predecessors all imported variables must
+be in correct SSA form. That means every branch exports exactly one
+SSA variable. The merged scope will contain both variables xⁱ and xⁿ.
+Therefore a phi must occur before the next merge.
+
+  xⁱ ∈ S₁  ⇒  xⁿ ∈ S₂
+  xⁱ - unique x in S₁
+  xⁿ - unique x in S₂
+  S := S₁ ∪ S₂
+  --------------------------------
+  merge S₁ S₂ : S
 
 The judgment (A, P ⊨d i : S) below is the instruction-specific judgment
 that checks the scope restrictions that are specific to each
@@ -290,9 +332,11 @@ generic requires/declares handling.
   -----------------
   A, P ⊨d start : ∅
 
-              A(v', l') = x*
+
+  A(v', l') = x*
   -------------------------------------
-  A, P ⊨d osr(e, f, lᵥ', l', (x = ee*)) : S
+  A, P ⊨d osr(e, f, lᵥ', l', osr-map*) : S
+
 
   ---------------
   A, P ⊨d stop : ∅
