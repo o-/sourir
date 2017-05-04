@@ -18,15 +18,12 @@ let insert_branch_pruning_assumption (func : afunction) : version option =
     | Scope scope ->
       begin match[@warning "-4"] instrs.(pc) with
       | Branch (exp, l1, l2) ->
-        let osr = List.map (function
-            | (Const_var, x) ->
-              Osr_const (x, (Simple (Var x)))
-            | (Mut_var, x) ->
-              if List.mem x (live pc) then
-                Osr_mut_ref (x,  x)
-              else
-                Osr_mut_undef x)
-            (ModedVarSet.elements scope)
+        let osr = List.map (fun x ->
+            if List.mem x (live pc) then
+              Osr_move (x,  x)
+            else
+              Osr_materialize (x, None))
+            (VarSet.elements scope)
         in
         Insert [Osr (exp, func.name, version.label, l1, osr); Goto l2]
       | _ -> Unchanged

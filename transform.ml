@@ -75,19 +75,16 @@ let cleanup_all_instrs = combine_transform_instructions [
     Transform_cleanup.remove_unreachable_code;
     Transform_cleanup.remove_unused_decl;
     Transform_cleanup.remove_jmp;]
-let minimize_liverange_instrs = combine_transform_instructions [
-    Transform_cleanup.remove_unused_decl;
-    Transform_liveness.minimize_liverange; ]
-let const_prop_instrs = combine_transform_instructions [
+(* let const_prop_instrs = combine_transform_instructions [
     Transform_constantfold.const_prop;
-    Transform_cleanup.remove_unused_decl;]
+    Transform_cleanup.remove_unused_decl;] *)
 
 let cleanup_all = as_opt_function cleanup_all_instrs
-let make_constant = as_opt_function Transform_constantfold.make_constant
+(* let make_constant = as_opt_function Transform_constantfold.make_constant
 let const_prop = as_opt_function const_prop_instrs
 let minimize_liverange = as_opt_function minimize_liverange_instrs
 let hoist_assignment = as_opt_function Transform_hoist_assign.hoist_assignment
-let hoist_drop = as_opt_function Transform_hoist.Drop.apply
+let hoist_drop = as_opt_function Transform_hoist.Drop.apply *)
 let branch_prune = optimistic_as_opt_function
     Transform_assumption.insert_branch_pruning_assumption
     (combine_transform_instructions [
@@ -99,7 +96,7 @@ exception UnknownOptimization of string
 
 let optimize (opts : string list) (prog : program) : program option =
   let optimizer = function
-    | "hoist_assign" ->
+(*    | "hoist_assign" ->
       as_opt_program hoist_assignment
     | "hoist_drop" ->
       as_opt_program hoist_drop
@@ -110,7 +107,7 @@ let optimize (opts : string list) (prog : program) : program option =
     | "make_const" ->
       as_opt_program make_constant
     | "prune" ->
-      as_opt_program branch_prune
+      as_opt_program branch_prune *)
     | o ->
       raise (UnknownOptimization o)
   in

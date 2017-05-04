@@ -4,7 +4,7 @@ open Instr
 let fresh_var instrs var =
   let cand i = var ^ "_" ^ (string_of_int i) in
   let is_fresh cand_var instr =
-    let existing = ModedVarSet.untyped (declared_vars instr) in
+    let existing = declared_vars instr in
     not (VarSet.mem cand_var existing) in
   let rec find i =
     let cand_var = cand i in
@@ -118,41 +118,26 @@ let replace_uses_in_instruction old_name new_name instr : instruction =
     | Simple se -> Simple (in_simple_expression se)
     | Op (op, exps) ->
       Op (op, List.map in_simple_expression exps) in
-  let in_arg exp : argument =
-    match exp with
-    | Arg_by_val e -> Arg_by_val (in_expression e)
-    | Arg_by_ref x -> if x = old_name then Arg_by_ref new_name else Arg_by_ref x in
   let in_osr osr : osr_def =
     match osr with
-    | Osr_const (x, exp) -> Osr_const (x, in_expression exp)
-    | Osr_mut (x, exp) -> Osr_mut (x, in_expression exp)
-    | Osr_mut_ref (x, y) ->
-      if y = old_name then Osr_mut_ref (x, new_name) else osr
-    | Osr_mut_undef _ -> osr in
+    | Osr_move (_, x) -> assert(x <> old_name); osr
+    | Osr_materialize (x, Some exp) -> Osr_materialize (x, Some (in_expression exp))
+    | Osr_materialize (_, None) -> osr in
 
   match instr with
   | Call (x, f, exs) ->
     assert(x != old_name);   (* -> invalid scope *)
-    Call (x, in_expression f, List.map in_arg exs)
-  | Stop e ->
-    Stop (in_expression e)
+    Call (x, in_expression f, List.map in_expression exs)
   | Return e ->
     Return (in_expression e)
-  | Decl_const (x, exp) ->
-    assert(x != old_name);   (* -> invalid scope *)
-    Decl_const (x, in_expression exp)
-  | Decl_mut (x, Some exp) ->
+  | Declare (x, Some exp) ->
     assert (x != old_name);
-    Decl_mut (x, Some (in_expression exp))
+    Declare (x, Some (in_expression exp))
   | Assign (x, exp) ->
     Assign (x, in_expression exp)
   | Array_assign (x, index, exp) ->
     let x' = if x = old_name then new_name else x in
     Array_assign (x', in_expression index, in_expression exp)
-  | Drop x ->
-    if x = old_name then Drop new_name else instr
-  | Clear x ->
-    if x = old_name then Clear new_name else instr
   | Print exp ->
     Print (in_expression exp)
   | Branch (exp, l1, l2) ->
@@ -161,7 +146,8 @@ let replace_uses_in_instruction old_name new_name instr : instruction =
     Osr (in_expression exp, f, v, l,
          List.map in_osr osrs)
 
-  | Decl_mut (x, None)
+  | Declare (x, None)
+  | Drop x
   | Read x ->
     assert (x != old_name);
     instr
@@ -176,7 +162,7 @@ let freshen_assign ({instrs} as inp : analysis_input) (def : pc) =
   match[@warning "-4"] instr with
   | Assign (x, exp) ->
     let fresh = fresh_var instrs x in
-    instrs.(def) <- Decl_mut (fresh, Some exp);
+    instrs.(def) <- Declare (fresh, Some exp);
     List.iter (fun pc ->
       instrs.(pc) <- replace_uses_in_instruction x fresh instrs.(pc)) uses
   | _ ->
@@ -193,10 +179,3 @@ let replace_var_in_exp var (exp : simple_expression) (in_exp : expression) : exp
   | Simple se -> Simple (in_simple_exp se)
   | Op (op, exps) ->
     Op (op, List.map in_simple_exp exps)
-
-let replace_var_in_arg var (exp : simple_expression) (in_arg : argument) : argument =
-  let replace = replace_var_in_exp var exp in
-  match in_arg with
-    | Arg_by_val e -> Arg_by_val (replace e)
-    | Arg_by_ref x as a -> assert (var <> x); a
-

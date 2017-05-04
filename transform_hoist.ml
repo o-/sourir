@@ -1,5 +1,6 @@
 open Instr
 
+(*
 type push_status =
   | Stop of Edit.result
   | Blocked
@@ -178,13 +179,13 @@ module Drop = struct
     | Call (x, _, _) when x = var -> true
     | _ ->
       let blocking = VarSet.mem var (required_vars instr) in
-      let declared = VarSet.mem var (ModedVarSet.untyped (declared_vars instr)) in
+      let declared = VarSet.mem var (declared_vars instr) in
       assert (blocking || not(declared));
       blocking
 
   let is_eliminating var instr =
     match[@warning "-4"] instr with
-    | Assign (x, _) | Clear x -> x = var
+    | Assign (x, _) -> x = var
     | _ -> false
 
   let is_annihilating var instr =
@@ -225,3 +226,4 @@ module Drop = struct
     let res, changed = work instrs (VarSet.elements dropped_vars) false in
     if changed then Some res else None
 end
+   *)

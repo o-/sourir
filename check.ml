@@ -16,7 +16,7 @@ exception ErrorAt of identifier * label * exn
 exception FunctionDoesNotExist of identifier
 exception VersionDoesNotExist of identifier * label
 exception InvalidNumArgs of pc
-exception InvalidArgument of pc * argument
+exception InvalidArgument of pc * expression
 exception MissingReturn
 
 
@@ -26,7 +26,7 @@ let well_formed prog =
   (* Check if main exists and expects no arguments *)
   let check_main main =
     if main.name <> "main" then raise MissingMain;
-    if main.formals <> [] then raise InvalidMain;
+    if [] <> main.formals then raise InvalidMain;
   in
   check_main prog.main;
 
@@ -42,56 +42,26 @@ let well_formed prog =
 
   let functions = prog.main :: prog.functions in
 
-  (* Formals args shall not contain duplicate variables *)
-  let check_formals name formals =
-    let formals = List.map (fun f -> match f with
-        | Const_val_param x -> x | Mut_ref_param x -> x) formals in
-    let check seen var =
-      if VarSet.mem var seen
-      then raise (DuplicateParameter (name, var))
-      else VarSet.add var seen
-    in ignore (List.fold_left check VarSet.empty formals)
-  in
-
   let check_version func (version:version) =
     let instrs = version.instrs in
 
     if func.name <> "main" then
       begin if Array.length instrs = 0 then raise MissingReturn;
       begin match[@warning "-4"] instrs.((Array.length instrs) - 1) with
-      | Return _ | Stop _ | Goto _ | Branch _ -> ()
+      | Return _ | Goto _ | Branch _ -> ()
       | _ -> raise MissingReturn end
     end;
 
-    let scope = Scope.infer (Analysis.as_analysis_input func version) in
-
-    let check_static_arg pc actual =
-      match actual with
-      | Arg_by_val _ -> ()
-      | Arg_by_ref x ->
-        begin match scope.(pc) with
-        | DeadScope -> ()
-        | Scope scope ->
-          ignore (try ModedVarSet.find (Mut_var, x) scope with
-                  | Not_found -> raise (InvalidArgument (pc, actual))
-                  | Incomparable -> raise (InvalidArgument (pc, actual)))
-        end in
-
     let check_signature pc (func:afunction) args =
       if (List.length args <> List.length func.formals)
-      then raise (InvalidNumArgs pc);
-      let check_arg (formal, actual) =
-        match[@warning "-4"] formal, actual with
-        | Const_val_param _, Arg_by_val _
-        | Mut_ref_param _, Arg_by_ref _ -> ()
-        | _ -> raise (InvalidArgument (pc, actual)) in
-      List.iter check_arg (List.combine func.formals args) in
+      then raise (InvalidNumArgs pc)
+    in
 
     let check_fun_ref instr =
       let rec check_value = function
         | Nil | Bool _ | Int _ -> ()
         | Fun_ref x -> ignore (lookup_fun x)
-        | Array vs -> Array.iter check_value vs
+        | Array vs -> Array.iter check_value !vs
       in
       let check_simple_expr = function
         | Var _ -> ()
@@ -101,27 +71,23 @@ let well_formed prog =
         | Simple e -> check_simple_expr e
         | Op (_op, xs) ->
           List.iter check_simple_expr xs in
-      let check_arg = function
-        | Arg_by_val e -> check_expr e
-        | Arg_by_ref x -> () in
       let check_osr = function
-        | Osr_const (_, e)
-        | Osr_mut (_, e) -> check_expr e
-        | Osr_mut_ref _ | Osr_mut_undef _ -> () in
+        | Osr_move _ -> ()
+        | Osr_materialize (_, Some e) -> check_expr e
+        | Osr_materialize (_, None) -> () in
       match instr with
       | Call (_x, f, es) ->
         (check_expr f;
-         List.iter check_arg es)
-      | Decl_const (_, e)
-      | Decl_mut (_, Some e)
+         List.iter check_expr es)
+      | Declare (_, Some e)
       | Assign (_, e)
       | Branch (e, _, _)
       | Print e
-      | Stop e
       | Return e ->
         check_expr e
-      | Decl_mut (_, None)
-      | Drop _ | Clear _ | Read _
+      | Declare (_, None)
+      | Read _
+      | Drop _
       | Label _ | Goto _ | Comment _ -> ()
       | Osr (e, _, _, _, osr) ->
         check_expr e;
@@ -135,8 +101,6 @@ let well_formed prog =
     let check_instr pc instr =
       match[@warning "-4"] instr with
       | Call (x, f, exs) ->
-        (* Check call-by-name args are mut *)
-        List.iter (check_static_arg pc) exs;
         (* if it's a static call check that the function exists and if the
          * actual arguments are compatible with the formals *)
         begin match[@warning "-4"] f with
@@ -159,7 +123,13 @@ let well_formed prog =
 
   let check_function func =
     if func.body = [] then raise (EmptyFunction func.name);
-    check_formals func.name func.formals;
+
+    let check seen var =
+      if VarSet.mem var seen
+      then raise (DuplicateParameter (func.name, var))
+      else VarSet.add var seen
+    in ignore (List.fold_left check VarSet.empty func.formals);
+
     let check seen {label} =
       if VarSet.mem label seen
       then raise (DuplicateVersion (func.name, label))

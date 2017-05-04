@@ -6,7 +6,7 @@ let ok _ = true
 let trace_is li =
   fun conf -> Eval.read_trace conf = li
 let has_var x v =
-  fun conf -> Eval.(lookup conf.heap conf.env x = v)
+  fun conf -> Eval.(lookup conf.env x = v)
 let returns n =
   fun conf -> Eval.(conf.status = Result n)
 

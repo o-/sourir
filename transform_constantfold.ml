@@ -1,6 +1,7 @@
 open Instr
 
 (*
+(*
  * Constant propagation. Takes a program `prog` and returns an updated stream.
  *
  * Finds all constant declarations of the form:
@@ -161,3 +162,4 @@ let make_constant (({formals; instrs} as inp) : analysis_input) : instructions o
   in
   let () = apply 0 in
   change_instrs (fun pc -> changes.(pc)) inp
+   *)

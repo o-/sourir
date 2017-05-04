@@ -24,38 +24,6 @@ type label = Label.t
 
 module VarSet = Set.Make(Variable)
 
-type variable_type = Mut_var | Const_var
-
-type moded_var = variable_type * variable
-
-exception Incomparable
-
-module ModedVar = struct
-  type t = moded_var
-  let compare (ma, a) (mb, b) =
-    match String.compare a b with
-    | 0 ->
-      if ma = mb then 0 else raise Incomparable
-    | c -> c
-end
-
-module ModedVarSet = struct
-  include Set.Make(ModedVar)
-
-  let vars set = List.map snd (elements set)
-  let untyped set = VarSet.of_list (vars set)
-
-  let muts set =
-    let muts = filter (fun (m,v) -> m = Mut_var) set in
-    untyped muts
-
-  let diff_untyped typed untyped =
-    filter (fun (_m, x) -> not (VarSet.mem x untyped)) typed
-
-  let inter_untyped typed untyped =
-    filter (fun (_m, x) -> VarSet.mem x untyped) typed
-end
-
 module Identifier = struct
   type t = string
   let compare = String.compare
@@ -71,30 +39,22 @@ type pc = Pc.t
 
 type instructions = instruction array
 and instruction =
-  | Decl_const of variable * expression
-  | Decl_mut of variable * (expression option)
-  | Call of variable * expression * (argument list)
+  | Call of variable * expression * (expression list)
   | Return of expression
+  | Declare of variable * (expression option)
   | Drop of variable
   | Assign of variable * expression
   | Array_assign of variable * expression * expression
-  | Clear of variable
   | Read of variable
   | Branch of expression * label * label
   | Label of label
   | Goto of label
   | Print of expression
   | Osr of expression * label * label * label * osr_def list
-  | Stop of expression
   | Comment of string
 and osr_def =
-  | Osr_const of variable * expression
-  | Osr_mut of variable * expression
-  | Osr_mut_ref of variable * variable
-  | Osr_mut_undef of variable
-and argument =
-  | Arg_by_val of expression
-  | Arg_by_ref of variable
+  | Osr_move of variable * variable
+  | Osr_materialize of variable * expression option
 and expression =
   | Simple of simple_expression
   | Op of primop * simple_expression list
@@ -106,7 +66,7 @@ and value =
   | Bool of bool
   | Int of int
   | Fun_ref of string
-  | Array of value array
+  | Array of (value array) ref
 and primop =
   | Eq
   | Neq
@@ -122,13 +82,9 @@ type scope_annotation =
 
 type inferred_scope =
   | DeadScope
-  | Scope of ModedVarSet.t
+  | Scope of VarSet.t
 
 type annotations = scope_annotation option array
-
-type formal_parameter =
-  | Const_val_param of variable
-  | Mut_ref_param of variable
 
 type version = {
   label : label;
@@ -137,7 +93,7 @@ type version = {
 }
 type afunction = {
   name : identifier;
-  formals : formal_parameter list;
+  formals : variable list;
   body : version list;
 }
 type program = {
@@ -145,7 +101,7 @@ type program = {
   functions : afunction list;
 }
 type analysis_input = {
-  formals : ModedVarSet.t;
+  formals : VarSet.t;
   instrs : instructions;
 }
 
@@ -155,17 +111,13 @@ type heap_value =
 
 type address = Address.t
 
-type binding =
-  | Val of value
-  | Ref of address
-
 let rec string_of_value : value -> string = function
   | Nil -> "nil"
   | Bool b -> string_of_bool b
   | Int n -> string_of_int n
   | Fun_ref f -> "'" ^ f
   | Array vs ->
-    let ss = Array.to_list (Array.map string_of_value vs) in
+    let ss = Array.to_list (Array.map string_of_value !vs) in
     "[" ^ String.concat "," ss ^ "]"
 
 let value_of_string : string -> value = function
@@ -197,41 +149,33 @@ let expr_vars = function
     List.map simple_expr_vars xs
     |> List.fold_left VarSet.union VarSet.empty
 
-let arg_vars = function
-  | Arg_by_val e -> expr_vars e
-  | Arg_by_ref x -> VarSet.singleton x
-
 let declared_vars = function
   | Call (x, _, _)
-  | Decl_const (x, _) -> ModedVarSet.singleton (Const_var, x)
-  | Decl_mut (x, _) -> ModedVarSet.singleton (Mut_var, x)
+  | Declare (x, _) -> VarSet.singleton x
   | (Assign _
     | Array_assign _
-    | Drop _
     | Return _
-    | Clear _
     | Branch _
     | Label _
     | Goto _
     | Read _
     | Print _
     | Osr _
-    | Comment _
-    | Stop _) -> ModedVarSet.empty
+    | Drop _
+    | Comment _) -> VarSet.empty
 
 (* Which variables need to be in scope
  * Producer: declared_vars *)
 let required_vars = function
   | Call (_x, f, es) ->
     let s = expr_vars f in
-    let vs = List.map arg_vars es in
+    let vs = List.map expr_vars es in
     List.fold_left VarSet.union s vs
-  | Stop e
   | Return e -> expr_vars e
-  | Decl_const (_x, e) -> expr_vars e
-  | Decl_mut (_x, Some e) -> expr_vars e
-  | Decl_mut (_x, None) -> VarSet.empty
-  | Drop x | Clear x | Read x -> VarSet.singleton x
+  | Declare (_x, Some e) -> expr_vars e
+  | Declare (_x, None) -> VarSet.empty
+  | Drop x
+  | Read x -> VarSet.singleton x
   | Assign (x, e) -> VarSet.union (VarSet.singleton x) (expr_vars e)
   | Array_assign (x, i, e) ->
     VarSet.singleton x
@@ -243,23 +187,20 @@ let required_vars = function
   | Print e -> expr_vars e
   | Osr (e, _, _, _, osr) ->
     let exps = List.map (function
-        | Osr_const (_, e) -> e
-        | Osr_mut (_, e) -> e
-        | Osr_mut_ref (_, x) -> Simple (Var x)
-        | Osr_mut_undef _ -> Simple (Constant Nil)) osr in
+        | Osr_move (_, x) -> Simple (Var x)
+        | Osr_materialize (_, Some e) -> e
+        | Osr_materialize (_, None) -> Simple (Constant Nil)) osr in
     let exps_vars = List.map expr_vars exps in
     List.fold_left VarSet.union (expr_vars e) exps_vars
 
 let defined_vars = function
   | Call (x, _, _)
-  | Decl_const (x, _) -> ModedVarSet.singleton (Const_var, x)
-  | Decl_mut (x, Some _)
+  | Declare (x, Some _)
   | Assign (x ,_)
-  | Read x -> ModedVarSet.singleton (Mut_var, x)
-  | Decl_mut (_, None)
-  | Return _
+  | Read x -> VarSet.singleton x
   | Drop _
-  | Clear _
+  | Declare (_, None)
+  | Return _
   | Branch _
   | Label _
   | Goto _
@@ -267,56 +208,33 @@ let defined_vars = function
   | Print _
   | Osr _
   | Array_assign _ (* The array has to be defined already. *)
-  | Stop _ -> ModedVarSet.empty
+    -> VarSet.empty
 
 let dropped_vars = function
   | Drop x -> VarSet.singleton x
   | Return _
   | Call _
-  | Decl_const _
-  | Decl_mut _
+  | Declare _
   | Assign _
   | Array_assign _
-  | Clear _
   | Read _
   | Branch _
   | Label _
   | Goto _
   | Comment _
   | Print _
-  | Osr _
-  | Stop _ -> VarSet.empty
-
-let cleared_vars = function
-  | Clear x -> VarSet.singleton x
-  | Return _
-  | Call _
-  | Decl_const _
-  | Decl_mut _
-  | Assign _
-  | Array_assign _
-  | Drop _
-  | Read _
-  | Branch _
-  | Label _
-  | Goto _
-  | Comment _
-  | Print _
-  | Osr _
-  | Stop _ -> VarSet.empty
+  | Osr _ -> VarSet.empty
 
 (* Which variables need to be defined
  * Producer: defined_vars *)
 let used_vars = function
   | Call (_x, f, es) ->
     let v = expr_vars f in
-    let vs = List.map arg_vars es in
+    let vs = List.map expr_vars es in
     List.fold_left VarSet.union v vs
-  | Stop e
   | Return e -> expr_vars e
-  | Decl_const (_x, e) -> expr_vars e
-  | Decl_mut (_x, Some e) -> expr_vars e
-  | Decl_mut (_x, None) -> VarSet.empty
+  | Declare (_x, Some e) -> expr_vars e
+  | Declare (_x, None) -> VarSet.empty
   (* the assignee is only required to be in scope, but not used! *)
   | Assign (_, e)
   | Branch (e, _, _)
@@ -325,18 +243,16 @@ let used_vars = function
     VarSet.singleton x
     |> VarSet.union (expr_vars i)
     |> VarSet.union (expr_vars e)
-  | Drop _
-  | Clear _
   | Label _
   | Goto _
   | Comment _
+  | Drop _
   | Read _ -> VarSet.empty
   | Osr (e, _, _, _, osr) ->
     let exps = List.map (function
-        | Osr_const (_, e) -> e
-        | Osr_mut (_, e) -> e
-        | Osr_mut_ref (_, x) -> Simple (Var x)
-        | Osr_mut_undef _ -> Simple (Constant Nil)) osr in
+        | Osr_move (_, x) -> Simple (Var x)
+        | Osr_materialize (_, Some e) -> e
+        | Osr_materialize (_, None) -> Simple (Constant Nil)) osr in
     let exps_vars = List.map expr_vars exps in
     List.fold_left VarSet.union (expr_vars e) exps_vars
 
