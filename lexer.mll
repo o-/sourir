@@ -4,16 +4,13 @@ open Parser
 exception Error of string * Lexing.position
 
 let keyword_table = [
-  "const", CONST;
-  "mut", MUT;
+  "var", VAR;
   "branch", BRANCH;
   "goto", GOTO;
   "print", PRINT;
   "osr", OSR;
-  "stop", STOP;
   "read", READ;
   "drop", DROP;
-  "clear", CLEAR;
   "return", RETURN;
   "call", CALL;
   "version", VERSION;

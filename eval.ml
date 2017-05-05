@@ -1,16 +1,22 @@
 open Instr
 
 module Env = Map.Make(Variable)
-module Heap = Map.Make(Address)
+
+type binding =
+  | Val of value
+  | Deleted
 
 type input = IO.input
 type trace = value list
 type environment = binding Env.t
-type heap = heap_value Heap.t
+
+type call_result =
+  | Assign of variable
+  | Declare of variable
 
 type status = Running | Result of value
 type position = identifier * label * pc
-type continuation = variable * environment * position
+type continuation = call_result * environment * position
 
 type configuration = {
   input : input;
@@ -33,10 +39,11 @@ let get_tag : value -> type_tag = function
   | Bool _ -> Bool
   | Int _ -> Int
   | Fun_ref _ -> Fun_ref
-  | Array _ -> Array
+  | Array_ref _ -> Array
 
 exception Unbound_variable of variable
 exception Undefined_variable of variable
+exception Redeclared_variable of variable
 exception Invalid_heap
 exception Arity_error of primop
 exception Invalid_update
@@ -53,40 +60,39 @@ type product_type_error = {
 }
 exception ProductType_error of product_type_error
 
-let lookup heap env x =
+let lookup (env : environment) (x : variable) : value =
   match Env.find x env with
   | exception Not_found -> raise (Unbound_variable x)
+  | Deleted -> raise (Unbound_variable x)
   | Val v -> v
-  | Ref a ->
-    begin match Heap.find a heap with
-    | exception Not_found -> raise Invalid_heap
-    | Undefined -> raise (Undefined_variable x)
-    | Value v -> v
-    end
 
-let update heap env x v =
+let deref (heap : heap) (a : address) : value array =
+  match Heap.find a heap with
+  | exception Not_found -> assert(false)
+  | Array arr -> arr
+  | Deleted_h -> raise Invalid_heap
+
+let drop (heap : heap) (env : environment) x : heap * environment =
+  match[@warning "-4"] Env.find x env with
+  | exception Not_found -> raise (Unbound_variable x)
+  | Deleted -> raise (Unbound_variable x)
+  | Val (Array_ref a) -> (Heap.add a Deleted_h heap, Env.add x Deleted env)
+  | Val _ -> (heap, Env.add x Deleted env)
+
+let assign (env : environment) (x : variable) (v : value) : environment =
   match Env.find x env with
   | exception Not_found -> raise (Unbound_variable x)
-  | Val _ -> raise Invalid_update
-  | Ref a ->
-    begin match Heap.find a heap with
-    | exception Not_found -> raise Invalid_heap
-    | _ -> Heap.add a (Value v) heap
-    end
+  | Deleted -> raise (Unbound_variable x)
+  | Val _ -> Env.add x (Val v) env
 
-let drop heap env x =
+let declare (env : environment) (x : variable) (v : value) =
   match Env.find x env with
-  | exception Not_found -> raise (Unbound_variable x)
-  | Val _ -> (heap, Env.remove x env)
-  | Ref a -> (Heap.remove a heap, Env.remove x env)
+  | exception Not_found -> Env.add x (Val v) env
+  | Deleted -> raise (Redeclared_variable x)
+  | Val _ -> raise (Redeclared_variable x)
 
-let clear heap env x =
-  match Env.find x env with
-  | exception Not_found -> raise (Unbound_variable x)
-  | Val _ -> raise Invalid_clear
-  | Ref a -> Heap.add a Undefined heap
 
-let rec value_eq (v1 : value) (v2 : value) =
+let rec value_eq heap (v1 : value) (v2 : value) =
   match v1, v2 with
   | Nil, Nil -> true
   | Nil, _ | _, Nil -> false
@@ -96,14 +102,15 @@ let rec value_eq (v1 : value) (v2 : value) =
   | Int _, _ | _, Int _ -> false
   | Fun_ref f1, Fun_ref f2 -> f1 = f2
   | Fun_ref _, _ | _, Fun_ref _ -> false
-  | Array vs1, Array vs2 ->
+  | Array_ref a1, Array_ref a2 ->
+    let vs1, vs2 = deref heap a1, deref heap a2 in
     let forall2 p arr1 arr2 =
       Array.mapi (fun i v1 -> p v1 arr2.(i)) arr1
       |> Array.for_all (fun b -> b)
     in
     Array.length vs1 = Array.length vs2
-    && forall2 value_eq vs1 vs2
-  | Array _, _ | _, Array _ -> .
+    && forall2 (value_eq heap) vs1 vs2
+  | Array_ref _, _ | _, Array_ref _ -> .
     (* The case above cannot happen (`.` means "unreachable case",
        this is called a refutation clause) because all constructors
        other than Array have been filtered before.  If you add a new
@@ -114,64 +121,69 @@ let rec value_eq (v1 : value) (v2 : value) =
 let value_plus (v1 : value) (v2 : value) =
   match v1, v2 with
   | Int n1, Int n2 -> n1 + n2
-  | (Int _ | Nil | Bool _ | Fun_ref _ | Array _) as x1, x2 ->
+  | (Int _ | Nil | Bool _ | Fun_ref _ | Array_ref _) as x1, x2 ->
       let expected = (Int, Int) in
       let received = get_tag x1, get_tag x2 in
       raise (ProductType_error { expected; received })
 
-let value_neq (v1 : value) (v2 : value) =
-  not (value_eq v1 v2)
+let value_neq heap (v1 : value) (v2 : value) =
+  not (value_eq heap v1 v2)
 
 let eval_simple prog heap env = function
-  | Var x -> lookup heap env x
+  | Var x -> lookup env x
   | Constant c -> c
 
 let get_int (v : value) =
   match v with
   | Int i -> i
-  | (Nil | Bool _ | Fun_ref _ | Array _) as other ->
+  | (Nil | Bool _ | Fun_ref _ | Array_ref _) as other ->
      let expected, received = Int, get_tag other in
      raise (Type_error { expected; received })
 
 let get_bool (v : value) =
   match v with
   | Bool b -> b
-  | (Nil | Int _ | Fun_ref _ | Array _) as other ->
+  | (Nil | Int _ | Fun_ref _ | Array_ref _) as other ->
      let expected, received = Bool, get_tag other in
      raise (Type_error { expected; received })
 
 let get_fun (v : value) =
   match v with
   | Fun_ref f -> f
-  | (Nil | Int _ | Bool _ | Array _) as other ->
+  | (Nil | Int _ | Bool _ | Array_ref _) as other ->
      let expected, received = Fun_ref, get_tag other in
      raise (Type_error { expected; received })
 
-let get_array (v : value) =
+let get_array heap (v : value) =
   match v with
-  | Array vs -> vs
+  | Array_ref a -> deref heap a
   | (Nil | Int _ | Bool _ | Fun_ref _) as other ->
      let expected, received = Array, get_tag other in
      raise (Type_error { expected; received })
 
-let rec eval prog heap env = function
-  | Simple e -> eval_simple prog heap env e
+let rec eval prog heap env : expression -> heap * value = function
+  | Simple e -> heap, eval_simple prog heap env e
   | Op (op, es) ->
     begin match op, List.map (eval_simple prog heap env) es with
-    | Eq, [v1; v2] -> Bool (value_eq v1 v2)
-    | Neq, [v1; v2] -> Bool (value_neq v1 v2)
-    | Plus, [v1; v2] -> Int (value_plus v1 v2)
+    | Eq, [v1; v2] -> heap, Bool (value_eq heap v1 v2)
+    | Neq, [v1; v2] -> heap, Bool (value_neq heap v1 v2)
+    | Plus, [v1; v2] -> heap, Int (value_plus v1 v2)
     | (Eq | Neq | Plus), _vs -> raise (Arity_error op)
     | Array_alloc, [size] ->
       let size = get_int size in
-      Array (Array.make size (Nil : value))
-    | Array_of_list, vs -> Array (Array.of_list vs)
+      let arr = Instr.Array (Array.make size (Nil : value)) in
+      let a = Address.fresh () in
+      Heap.add a arr heap, Array_ref a
+    | Array_of_list, vs ->
+      let arr = Instr.Array (Array.of_list vs) in
+      let a = Address.fresh () in
+      Heap.add a arr heap, Array_ref a
     | Array_index, [array; index] ->
-      let array, index = get_array array, get_int index in
-      array.(index)
+      let array, index = get_array heap array, get_int index in
+      heap, array.(index)
     | Array_length, [array] ->
-      let array = get_array array in
-      Int (Array.length array)
+      let array = get_array heap array in
+      heap, Int (Array.length array)
     | ((Array_alloc | Array_index | Array_length), _) -> raise (Arity_error op)
     end
 
@@ -189,167 +201,148 @@ let reduce conf =
     if conf.pc < Array.length conf.instrs
     then conf.instrs.(conf.pc)
     else if conf.continuation = []
-    then Stop default_exit
+    then Return default_exit
     else assert (false)
   in
 
-  let build_call_frame formals actuals =
-    let eval_arg env (formal, actual) =
-      match[@warning "-4"] formal, actual with
-      | Instr.Const_val_param x, Arg_by_val e ->
-        let value = eval conf e in
-        Env.add x (Val value) env
-      | Instr.Mut_ref_param x, Arg_by_ref var ->
-        let get_addr = function
-          | Ref a as adr -> adr
-          | Val _ -> raise InvalidArgument
-        in
-        let adr = get_addr (Env.find var conf.env) in
-        Env.add x adr env
-      | _ -> raise InvalidArgument
+  let build_call_frame heap formals actuals =
+    let eval_arg (env, heap) (formal, actual) =
+      let heap, value = eval conf actual in
+      (Env.add formal (Val value) env, heap)
     in
     let args = List.combine formals actuals in
-    List.fold_left eval_arg Env.empty args
+    List.fold_left eval_arg (Env.empty, heap) args
   in
 
   let build_osr_frame osr_def old_env old_heap =
     let add (env, heap) = function
-      | Osr_const (x, e) ->
-        (Env.add x (Val (eval conf e)) env, heap)
-      | Osr_mut_ref (x, x') ->
+      | Osr_materialize (x, e) ->
+        let heap, v = eval conf e in
+        (Env.add x (Val v) env, heap)
+      | Osr_move (x, x') ->
         begin match Env.find x' old_env with
         | exception Not_found -> raise (Unbound_variable x')
-        | Val _ -> raise Invalid_heap
-        | Ref a ->
-          (Env.add x' (Ref a) env, heap)
+        | v -> (Env.add x' v env, heap)
         end
-      | Osr_mut (x, e) ->
-        let v = eval conf e in
-        let a = Address.fresh () in
-        (Env.add x (Ref a) env,
-         Heap.add a (Value v) heap)
-      | Osr_mut_undef x ->
-        let a = Address.fresh () in
-        (Env.add x (Ref a) env, heap)
     in
     List.fold_left add (Env.empty, old_heap) osr_def
   in
 
-  match instruction with
-  | Call (x, f, args) ->
-    let f = eval conf f in
+  let apply_call f args =
+    let heap, f = eval conf f in
     let func = lookup_fun conf.program (get_fun f) in
     if List.length func.formals <> List.length args then raise InvalidNumArgs;
     let version = Instr.active_version func in
-    let call_env = build_call_frame func.formals args in
+    let call_env, heap = build_call_frame heap func.formals args in
     let cont_pos = (conf.cur_fun, conf.cur_vers, pc') in
-    { conf with
-      env = call_env;
-      instrs = version.instrs;
-      pc = 0;
-      cur_fun = func.name;
-      cur_vers = version.label;
-      continuation = (x, conf.env, cont_pos) :: conf.continuation
-    }
+    (call_env, heap, func, version, cont_pos)
+  in
+
+  match instruction with
+  | Assign (x, rhs) ->
+    begin match rhs with
+      | Call (f, args) ->
+        let call_env, heap, func, version, cont_pos = apply_call f args in
+        { conf with
+          env = call_env;
+          instrs = version.instrs;
+          pc = 0;
+          cur_fun = func.name;
+          cur_vers = version.label;
+          continuation = (Assign x, conf.env, cont_pos) :: conf.continuation
+        }
+      | Expr e ->
+        let heap, v = eval conf e in
+        let env = assign conf.env x v in
+        { conf with env; heap; pc = pc'}
+      | Read ->
+        let (IO.Next (v, input)) = conf.input () in
+        let env = assign conf.env x v in
+        { conf with env; input; pc = pc' }
+      end
+  | Declare (x, rhs) ->
+    begin match rhs with
+      | Call (f, args) ->
+        let call_env, heap, func, version, cont_pos = apply_call f args in
+        { conf with
+          env = call_env;
+          instrs = version.instrs;
+          pc = 0;
+          cur_fun = func.name;
+          cur_vers = version.label;
+          continuation = (Declare x, conf.env, cont_pos) :: conf.continuation
+        }
+      | Expr e ->
+        let heap, v = eval conf e in
+        let env = declare conf.env x v in
+        { conf with env; heap; pc = pc'}
+      | Read ->
+        let (IO.Next (v, input)) = conf.input () in
+        let env = declare conf.env x v in
+        { conf with env; input; pc = pc' }
+      end
   | Return e ->
-     let res = eval conf e in
+     let heap, res = eval conf e in
      begin match conf.continuation with
      | [] ->
        { conf with
          status = Result res }
-     | (x, env, (f, v, pc)) :: cont ->
-       let env = Env.add x (Val res) env in
+     | (res_acc, env, (f, v, pc)) :: cont ->
+       let env =
+         match res_acc with
+         | Assign x -> assign env x res
+         | Declare x -> declare env x res
+       in
        let func = Instr.lookup_fun conf.program f in
        let version = Instr.get_version func v in
        { conf with
-         env = env;
+         env; heap;
          cur_fun = func.name;
          cur_vers = version.label;
          instrs = version.instrs;
-         pc = pc;
+         pc = pc';
          continuation = cont; }
      end
-  | Stop e ->
-     let v = eval conf e in
-     { conf with
-       status = Result v }
-  | Comment _ -> { conf with
-                   pc = pc' }
-  | Decl_const (x, e) ->
-     let v = eval conf e in
-     { conf with
-       env = Env.add x (Val v) conf.env;
-       pc = pc';
-     }
-  | Decl_mut (x, Some e) ->
-     let a = Address.fresh () in
-     let v = eval conf e in
-     { conf with
-       heap = Heap.add a (Value v) conf.heap;
-       env = Env.add x (Ref a) conf.env;
-       pc = pc';
-     }
-  | Decl_mut (x, None) ->
-     let a = Address.fresh () in
-     { conf with
-       heap = Heap.add a Undefined conf.heap;
-       env = Env.add x (Ref a) conf.env;
-       pc = pc';
-     }
   | Drop x ->
-    let (heap, env) = drop conf.heap conf.env x in
+    let heap, env = drop conf.heap conf.env x in
     { conf with
       heap; env;
       pc = pc';
     }
-  | Clear x ->
-    let heap = clear conf.heap conf.env x in
+  | Array_assign (x, i, e) ->
+    let heap, vi = eval conf i in
+    let heap, ve = eval conf e in
+    let arr = lookup conf.env x in
+    let vs = get_array conf.heap arr in
+    vs.(get_int vi) <- ve;
     { conf with
       heap;
       pc = pc';
     }
-  | Assign (x, e) ->
-     let v = eval conf e in
-     { conf with
-       heap = update conf.heap conf.env x v;
-       pc = pc';
-     }
-  | Array_assign (x, i, e) ->
-    let vi = eval conf i in
-    let ve = eval conf e in
-    let arr = lookup conf.heap conf.env x in
-    let vs = get_array arr in
-    vs.(get_int vi) <- ve;
-    { conf with
-      heap = update conf.heap conf.env x (Array vs);
-      pc = pc';
-    }
   | Branch (e, l1, l2) ->
-     let b = get_bool (eval conf e) in
-     { conf with pc = resolve conf.instrs (if b then l1 else l2) }
+     let heap, b = eval conf e in
+     let b = get_bool b in
+     { conf with heap; pc = resolve conf.instrs (if b then l1 else l2) }
   | Label _ -> { conf with pc = pc' }
   | Goto label -> { conf with pc = resolve conf.instrs label }
-  | Read x ->
-    let (IO.Next (v, input')) = conf.input () in
-    { conf with
-      heap = update conf.heap conf.env x v;
-      input = input';
-      pc = pc';
-    }
   | Print e ->
-    let v = eval conf e in
+    let heap, v = eval conf e in
     { conf with
       trace = v :: conf.trace;
+      heap;
       pc = pc';
     }
   | Osr {cond; target={func;version; label}; map} ->
-    let triggered = List.exists (fun cond -> get_bool (eval conf cond)) cond in
+    let heap, triggered = List.fold_left (fun (heap, t) cond ->
+        let heap, b = eval conf cond in
+        (heap, t || get_bool b)) (conf.heap, false) cond in
     if not triggered then
       { conf with
+        heap;
         pc = pc';
       }
     else begin
-      let osr_env, heap' = build_osr_frame map conf.env conf.heap in
+      let osr_env, heap' = build_osr_frame map conf.env heap in
       let func = Instr.lookup_fun conf.program func in
       let version = Instr.get_version func version in
       let instrs = version.instrs in

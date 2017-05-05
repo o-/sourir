@@ -26,18 +26,17 @@ let insert_checkpoints (func:afunction) =
       | DeadScope -> assert(false)
       | Scope scope ->
         let osr = List.map (function
-          | (Const_var, x) -> Osr_const (x, (Simple (Var x)))
-          | (Mut_var, x)   ->
+          | x ->
             if List.mem x (live (pc-1)) then
-              Osr_mut_ref (x, x)
+              Osr_move (x, x)
             else
-              Osr_mut_undef x) (ModedVarSet.elements scope) in
+              Osr_materialize (x, (Simple (Constant Nil)))) (VarSet.elements scope) in
         let target = { func=func.name; version=version.label; label=checkpoint_label pc } in
         Insert [Label (checkpoint_label pc); Osr {cond=[]; target; map=osr};]
     in
     if pc = 0 then Unchanged else
     match[@warning "-4"] instrs.(pc) with
-    | Stop _ | Return _ | Label _ | Comment _ -> Unchanged
+    | Return _ | Label _ -> Unchanged
     | Osr _ -> assert false
     | _ -> create_checkpoint pc
   in

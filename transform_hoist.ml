@@ -1,5 +1,6 @@
 open Instr
 
+(*
 type push_status =
   | Stop of Edit.result
   | Blocked
@@ -22,7 +23,7 @@ let push_instr cond instrs pc : push_status =
   let edit new_instrs =
     Edit.subst instrs pc_above 2 new_instrs in
   match[@warning "-4"] instr with
-  | Stop _ | Return _ ->
+  | Return _ ->
     (* we are coming from the predecessors, cannot reach a Stop! *)
     assert false
   | Label label
@@ -156,6 +157,7 @@ let pull is_target cond instrs =
     in
     work Stuck instrs 0
 
+*)
 
 module Drop = struct
   (* TODO:
@@ -173,6 +175,8 @@ module Drop = struct
    *   drop x
    *
    *)
+
+  (*
   let is_blocking var instr =
     match[@warning "-4"] instr with
     | Call (x, _, _) when x = var -> true
@@ -205,8 +209,10 @@ module Drop = struct
       | _ -> false
     in
     pull is_target (conditions_var var) instrs
-
+*)
   let apply ({formals; instrs} : analysis_input) : instructions option =
+    None
+    (*
     let collect vars instr =
       match[@warning "-4"] instr with
       | Drop x -> VarSet.add x vars
@@ -224,4 +230,5 @@ module Drop = struct
     in
     let res, changed = work instrs (VarSet.elements dropped_vars) false in
     if changed then Some res else None
+       *)
 end

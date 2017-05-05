@@ -13,7 +13,9 @@ open Instr
  * We only look at our own use-def chain. Thus the transformation renames the
  * variable to avoid overriding unrelated uses of the same name.
  *)
-let hoist_assignment ({formals; instrs} as inp : analysis_input) : instructions option =
+let hoist_assignment ({formals; instrs} : analysis_input) : instructions option =
+  None
+  (*
   let open Analysis in
   let reaching = reaching inp in
   let uses = uses inp in
@@ -53,3 +55,4 @@ let hoist_assignment ({formals; instrs} as inp : analysis_input) : instructions 
     Edit.freshen_assign {formals; instrs=copy} from_pc;
     Edit.move copy from_pc to_pc;
     Some copy
+     *)

@@ -41,48 +41,6 @@ Parsing an instruction, we parsed "branch" so far; an expression, for
 example "(x == 2)", is now expected to construct a branch instruction
 "branch <expr> <label> <label>".
 
-program: CONST IDENTIFIER EQUAL TRIPLE_DOT 
-##
-## Ends in an error in state: 100.
-##
-## instruction -> CONST variable EQUAL . expression [ NEWLINE ]
-##
-## The known suffix of the stack is as follows:
-## CONST variable EQUAL 
-##
-
-Parsing an instruction, we parsed "const <var> =" so far; an expression, for
-example "(x + 1)", is now expected to construct a constant declaration
-"const <var> = <expr>".
-
-program: CONST IDENTIFIER TRIPLE_DOT 
-##
-## Ends in an error in state: 99.
-##
-## instruction -> CONST variable . EQUAL expression [ NEWLINE ]
-##
-## The known suffix of the stack is as follows:
-## CONST variable 
-##
-
-Parsing an instruction, we parsed "const <var>" so far; the equal sign
-"=" is now expected to construct a constant declaration
-"const <var> = <expr>".
-
-program: CONST TRIPLE_DOT 
-##
-## Ends in an error in state: 98.
-##
-## instruction -> CONST . variable EQUAL expression [ NEWLINE ]
-##
-## The known suffix of the stack is as follows:
-## CONST 
-##
-
-Parsing an instruction, we parsed "const" so far; a variable, for
-example "x", is now expected to construct a constant declaration
-"const <var> = <expr>".
-
 program: GOTO TRIPLE_DOT 
 ##
 ## Ends in an error in state: 94.
@@ -96,20 +54,6 @@ program: GOTO TRIPLE_DOT
 Parsing an instruction, we parsed "goto" so far; a label, for example
 "foo", is now expected to construct a goto instruction
 "goto <label>".
-
-program: IDENTIFIER LEFTARROW TRIPLE_DOT 
-##
-## Ends in an error in state: 124.
-##
-## instruction -> variable LEFTARROW . expression [ NEWLINE ]
-##
-## The known suffix of the stack is as follows:
-## variable LEFTARROW 
-##
-
-Parsing an instruction, we parsed "<var> <-" so far; an expression,
-for example "(x + 1)", is now expected to construct an assignment
-"<var> <- <expression>".
 
 program: IDENTIFIER TRIPLE_DOT 
 ##
@@ -224,23 +168,6 @@ The complete instruction syntax is "osr [<conditions>] (<target>) [<osr-map>]",
 For example,
 "osr [(a==1)] (Main,optimized,l2) [const x = e, mut y = &y, mut z]".
 
-program: LBRACE IDENTIFIER COMMA STOP 
-##
-## Ends in an error in state: 9.
-##
-## scope -> variable COMMA . scope [ RBRACE ]
-##
-## The known suffix of the stack is as follows:
-## variable COMMA 
-##
-
-Parsing a scope annotation, we expect a comma-separated list of
-variables between curly brackets, for example "{ x, y }", the last
-element possibly being "...", for example "{ x, y, ...}". ("..." means
-that we are not restricting the instruction to use only the variables
-listed, we are only asking that at least those variables be present in
-scope.)
-
 program: LBRACE IDENTIFIER TRIPLE_DOT 
 ##
 ## Ends in an error in state: 8.
@@ -250,23 +177,6 @@ program: LBRACE IDENTIFIER TRIPLE_DOT
 ##
 ## The known suffix of the stack is as follows:
 ## variable 
-##
-
-Parsing a scope annotation, we expect a comma-separated list of
-variables between curly brackets, for example "{ x, y }", the last
-element possibly being "...", for example "{ x, y, ...}". ("..." means
-that we are not restricting the instruction to use only the variables
-listed, we are only asking that at least those variables be present in
-scope.)
-
-program: LBRACE STOP 
-##
-## Ends in an error in state: 5.
-##
-## scope_annotation -> LBRACE . scope RBRACE optional_newlines [ STOP RETURN READ PRINT OSR MUT IDENTIFIER GOTO DROP CONST COMMENT CLEAR CALL BRANCH ]
-##
-## The known suffix of the stack is as follows:
-## LBRACE 
 ##
 
 Parsing a scope annotation, we expect a comma-separated list of
@@ -301,51 +211,6 @@ program: LBRACE TRIPLE_DOT TRIPLE_DOT
 
 In a scope annotation, "..." should be the last item. "{ x, ... }" or
 "{ ... }" are valid, but "{ ..., x }" is not.
-
-program: MUT IDENTIFIER EQUAL TRIPLE_DOT 
-##
-## Ends in an error in state: 91.
-##
-## instruction -> MUT variable EQUAL . expression [ NEWLINE ]
-##
-## The known suffix of the stack is as follows:
-## MUT variable EQUAL 
-##
-
-Parsing a mutable declaration instruction, we parsed "mut <var> =" so
-far; an expression is now expected, for example "(x + 1)", to
-construct a constant mutable instruction "mut <var> = <expr>".
-
-program: MUT IDENTIFIER TRIPLE_DOT 
-##
-## Ends in an error in state: 90.
-##
-## instruction -> MUT variable . [ NEWLINE ]
-## instruction -> MUT variable . EQUAL expression [ NEWLINE ]
-##
-## The known suffix of the stack is as follows:
-## MUT variable 
-##
-
-Parsing a mutable declaration instruction, we parsed "mut <var>" so
-far; an equal sign "=" is now expected to construct a constant mutable
-instruction "mut <var> = <expr>".
-
-program: MUT TRIPLE_DOT 
-##
-## Ends in an error in state: 89.
-##
-## instruction -> MUT . variable [ NEWLINE ]
-## instruction -> MUT . variable EQUAL expression [ NEWLINE ]
-##
-## The known suffix of the stack is as follows:
-## MUT 
-##
-
-Parsing an instruction, we parsed "mut" so far; a variable, for
-example "x", is now expected to construct a mutable variable
-declaration
-"mut <var> = <expr>".
 
 program: PRINT LPAREN IDENTIFIER PLUS IDENTIFIER TRIPLE_DOT 
 ##
@@ -416,49 +281,6 @@ Parsing an instruction, we parsed "print" so far;
 an expression, for example "(x + 1)", is now expected
 to construct a print instruction
 "print <expr>".
-
-program: READ TRIPLE_DOT 
-##
-## Ends in an error in state: 52.
-##
-## instruction -> READ . variable [ NEWLINE ]
-##
-## The known suffix of the stack is as follows:
-## READ 
-##
-
-Parsing an instruction, we parsed "read" so far;
-a variable, for example "x", is now expected
-to construct a read assignment
-"read <var>".
-Note that the variable needs to have been declared as mutable first.
-
-program: STOP NIL NEWLINE TRIPLE_DOT 
-##
-## Ends in an error in state: 129.
-##
-## instruction_line -> scope_annotation instruction NEWLINE . optional_newlines [ VERSION STOP RETURN READ PRINT OSR MUT LBRACE IDENTIFIER GOTO FUNCTION EOF DROP CONST COMMENT CLEAR CALL BRANCH ]
-##
-## The known suffix of the stack is as follows:
-## scope_annotation instruction NEWLINE 
-##
-
-We parsed a complete instruction line, and are now inspecting a valid
-instruction on the next line, or the end of the file.
-
-program: STOP NIL TRIPLE_DOT 
-##
-## Ends in an error in state: 128.
-##
-## instruction_line -> scope_annotation instruction . NEWLINE optional_newlines [ VERSION STOP RETURN READ PRINT OSR MUT LBRACE IDENTIFIER GOTO FUNCTION EOF DROP CONST COMMENT CLEAR CALL BRANCH ]
-##
-## The known suffix of the stack is as follows:
-## scope_annotation instruction 
-##
-
-We parsed an instruction, and are now expecting a newline to complete
-the instruction line -- even if this is the last instruction, it
-should be followed by a line break.
 
 program: TRIPLE_DOT 
 ##

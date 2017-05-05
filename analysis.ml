@@ -26,13 +26,12 @@ let successors_at (instrs : instructions) pc : pc list =
   let resolve = Instr.resolve instrs in
   let all_succ =
     match instr with
-    | Decl_const _ | Decl_mut _ | Assign _ | Array_assign _
-    | Drop _ | Clear _ | Read _ | Call _ | Label _
-    | Comment _ | Osr _ | Print _ ->
+    | Declare _ | Assign _ | Array_assign _ | Drop _ | Label _
+    | Osr _ | Print _ ->
       let is_last = pc' = Array.length instrs in
       if is_last then [] else [pc']
     (* those are the instructions which manipulate controlflow:  *)
-    | Stop _ | Return _ -> []
+    | Return _ -> []
     | Goto l -> [resolve l]
     | Branch (_e, l1, l2) -> [resolve l1; resolve l2]
   in
@@ -178,24 +177,19 @@ end
 exception DuplicateFormalParameter
 
 let as_var_set (formals : formal_parameter list) =
-  let to_moded_var = function
-    | Const_val_param x -> (Const_var, x)
-    | Mut_ref_param x -> (Mut_var, x)
-  in
-  let formals' = ModedVarSet.of_list (List.map to_moded_var formals) in
-  if (List.length formals) <> (List.length (VarSet.elements (ModedVarSet.untyped formals'))) then
+  let formals' = VarSet.of_list formals in
+  if (List.length formals) <> (List.length (VarSet.elements formals')) then
     raise DuplicateFormalParameter;
   formals'
 
 let as_var_map formals =
-  let formals = VarSet.elements (ModedVarSet.untyped formals) in
-  VariableMap.initial formals
+  VariableMap.initial (VarSet.elements formals)
 
-let as_analysis_input (func:afunction) (version:version) =
+let as_analysis_input (func:afunction) (version:version) : analysis_input =
   { formals = as_var_set func.formals; instrs = version.instrs }
 
 (* returns a 'pc -> pc set' computing reaching definitions *)
-let reaching {formals; instrs} : pc -> PosSet.t =
+let reaching ({formals; instrs} : analysis_input) : pc -> PosSet.t =
   let merge _pc cur_defs in_defs =
     let merged = VariableMap.union cur_defs in_defs in
     if VariableMap.equal cur_defs merged then None else Some merged
@@ -203,7 +197,7 @@ let reaching {formals; instrs} : pc -> PosSet.t =
   let update pc defs =
     let instr = instrs.(pc) in
     (* add or override defined vars in one go*)
-    let kill = VarSet.elements (ModedVarSet.untyped (defined_vars instr)) in
+    let kill = VarSet.elements (assigned_vars instr) in
     let loc = PosSet.singleton (Instr pc) in
     let replace acc var = VariableMap.add var loc acc in
     List.fold_left replace defs kill
@@ -235,12 +229,12 @@ let scope_analysis (introduction : instruction -> variable list)
   backwards_analysis VariableMap.empty instrs merge update
 
 let liveness_analysis ({instrs} as inp : analysis_input) =
-  let introduction instr = VarSet.elements (ModedVarSet.untyped (defined_vars instr)) in
+  let introduction instr = VarSet.elements (assigned_vars instr) in
   let elimination instr = VarSet.elements (used_vars instr) in
   scope_analysis introduction elimination inp
 
 let lifetime_analysis ({instrs} as inp : analysis_input) =
-  let introduction instr = VarSet.elements (ModedVarSet.untyped (declared_vars instr)) in
+  let introduction instr = VarSet.elements (declared_vars instr) in
   let elimination instr = VarSet.elements (required_vars instr) in
   scope_analysis introduction elimination inp
 
@@ -263,8 +257,8 @@ let as_pc_set pos_set =
 let uses ({instrs} as inp : analysis_input) : pc -> PcSet.t =
   let res = liveness_analysis inp in
   fun pc ->
-    let add_uses (_, x) used = PosSet.union used (VariableMap.at x (res pc)) in
-    let pos = ModedVarSet.fold add_uses (defined_vars instrs.(pc)) PosSet.empty in
+    let add_uses x used = PosSet.union used (VariableMap.at x (res pc)) in
+    let pos = VarSet.fold add_uses (assigned_vars instrs.(pc)) PosSet.empty in
     (* formal parameter cannot be an use *)
     as_pc_set pos
 
@@ -285,8 +279,8 @@ let dominates ({instrs} : analysis_input) : pc -> pc -> bool =
 let required ({instrs} as inp : analysis_input) : pc -> PcSet.t =
   let res = lifetime_analysis inp in
   fun pc ->
-    let add_uses (_, x) used = PosSet.union used (VariableMap.at x (res pc)) in
-    let pos = ModedVarSet.fold add_uses (declared_vars instrs.(pc)) PosSet.empty in
+    let add_uses x used = PosSet.union used (VariableMap.at x (res pc)) in
+    let pos = VarSet.fold add_uses (declared_vars instrs.(pc)) PosSet.empty in
     (* formal parameter cannot be a require *)
     as_pc_set pos
 
@@ -308,19 +302,6 @@ let saturate analysis {instrs} =
   in
   let update pc cur_lifetime = analysis pc in
   forward_analysis VarSet.empty instrs merge update
-
-let aliased ({formals; instrs} : analysis_input) : pc -> VarSet.t =
-  (* TODO:
-   * currently only the formals can be aliased. But if we introduce
-   * mutable return values (think arrays) or aliasing with "mut x = &y"
-   * then we need a full fledged analysis here. *)
-  let ref_param params v =
-    match v with
-    | Mut_var, x -> x :: params
-    | Const_var, _ -> params
-  in
-  let mut_formals = List.fold_left ref_param [] (ModedVarSet.elements formals) in
-  fun _ -> VarSet.of_list mut_formals
 
 module Expression = struct
   type t = expression

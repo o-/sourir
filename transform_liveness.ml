@@ -2,6 +2,8 @@ open Instr
 open Transform_utils
 
 let minimize_liverange ({formals; instrs} : analysis_input) : instructions option =
+  None
+  (*
   let remove_drops instrs =
     Array.of_list (
       List.filter (fun x -> match[@warning "-4"] x with
@@ -32,3 +34,4 @@ let minimize_liverange ({formals; instrs} : analysis_input) : instructions optio
     else Insert drops
   in
   change_instrs transform inp
+     *)

@@ -8,9 +8,7 @@ let rec string_of_value : value -> string = function
   | Bool b -> string_of_bool b
   | Int n -> string_of_int n
   | Fun_ref f -> "'" ^ f
-  | Array vs ->
-    let ss = Array.to_list (Array.map string_of_value vs) in
-    "[" ^ String.concat ", " ss ^ "]"
+  | Array_ref a -> "an Array"
 
 let value_of_string str =
   try Parse.value_of_string str

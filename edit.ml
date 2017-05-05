@@ -4,7 +4,7 @@ open Instr
 let fresh_var instrs var =
   let cand i = var ^ "_" ^ (string_of_int i) in
   let is_fresh cand_var instr =
-    let existing = ModedVarSet.untyped (declared_vars instr) in
+    let existing = declared_vars instr in
     not (VarSet.mem cand_var existing) in
   let rec find i =
     let cand_var = cand i in
@@ -118,41 +118,32 @@ let replace_uses_in_instruction old_name new_name instr : instruction =
     | Simple se -> Simple (in_simple_expression se)
     | Op (op, exps) ->
       Op (op, List.map in_simple_expression exps) in
-  let in_arg exp : argument =
-    match exp with
-    | Arg_by_val e -> Arg_by_val (in_expression e)
-    | Arg_by_ref x -> if x = old_name then Arg_by_ref new_name else Arg_by_ref x in
   let in_osr osr : osr_def =
     match osr with
-    | Osr_const (x, exp) -> Osr_const (x, in_expression exp)
-    | Osr_mut (x, exp) -> Osr_mut (x, in_expression exp)
-    | Osr_mut_ref (x, y) ->
-      if y = old_name then Osr_mut_ref (x, new_name) else osr
-    | Osr_mut_undef _ -> osr in
+    | Osr_move (x, y) -> assert(old_name <> y); osr
+    | Osr_materialize (x, e) -> Osr_materialize (x, in_expression e) in
+  let in_rhs rhs : rhs =
+    match rhs with
+    | Call (e, es) ->
+      Call (in_expression e, List.map in_expression es)
+    | Expr e ->
+      Expr (in_expression e)
+    | Read -> Read in
 
   match instr with
-  | Call (x, f, exs) ->
-    assert(x != old_name);   (* -> invalid scope *)
-    Call (x, in_expression f, List.map in_arg exs)
-  | Stop e ->
-    Stop (in_expression e)
   | Return e ->
     Return (in_expression e)
-  | Decl_const (x, exp) ->
-    assert(x != old_name);   (* -> invalid scope *)
-    Decl_const (x, in_expression exp)
-  | Decl_mut (x, Some exp) ->
-    assert (x != old_name);
-    Decl_mut (x, Some (in_expression exp))
-  | Assign (x, exp) ->
-    Assign (x, in_expression exp)
-  | Array_assign (x, index, exp) ->
+  | Declare (x, rhs) ->
+    assert(x <> old_name);   (* -> invalid scope *)
+    Declare (x, in_rhs rhs)
+  | Assign (x, rhs) ->
     let x' = if x = old_name then new_name else x in
-    Array_assign (x', in_expression index, in_expression exp)
+    Assign (x', in_rhs rhs)
+  | Array_assign (x, index, e) ->
+    let x' = if x = old_name then new_name else x in
+    Array_assign (x', in_expression index, in_expression e)
   | Drop x ->
     if x = old_name then Drop new_name else instr
-  | Clear x ->
-    if x = old_name then Clear new_name else instr
   | Print exp ->
     Print (in_expression exp)
   | Branch (exp, l1, l2) ->
@@ -161,12 +152,7 @@ let replace_uses_in_instruction old_name new_name instr : instruction =
     let cond = List.map in_expression cond in
     let map = List.map in_osr map in
     Osr {cond; target; map}
-  | Decl_mut (x, None)
-  | Read x ->
-    assert (x != old_name);
-    instr
-
-  | Label _ | Goto _ | Comment _ ->
+  | Label _ | Goto _ ->
     assert (VarSet.is_empty (used_vars instr));
     instr
 
@@ -174,9 +160,9 @@ let freshen_assign ({instrs} as inp : analysis_input) (def : pc) =
   let uses = Analysis.PcSet.elements (Analysis.uses inp def) in
   let instr = instrs.(def) in
   match[@warning "-4"] instr with
-  | Assign (x, exp) ->
+  | Assign (x, rhs) ->
     let fresh = fresh_var instrs x in
-    instrs.(def) <- Decl_mut (fresh, Some exp);
+    instrs.(def) <- Declare (fresh, rhs);
     List.iter (fun pc ->
       instrs.(pc) <- replace_uses_in_instruction x fresh instrs.(pc)) uses
   | _ ->
@@ -194,9 +180,10 @@ let replace_var_in_exp var (exp : simple_expression) (in_exp : expression) : exp
   | Op (op, exps) ->
     Op (op, List.map in_simple_exp exps)
 
-let replace_var_in_arg var (exp : simple_expression) (in_arg : argument) : argument =
+let replace_var_in_rhs var (exp : simple_expression) (rhs : rhs) : rhs =
   let replace = replace_var_in_exp var exp in
-  match in_arg with
-    | Arg_by_val e -> Arg_by_val (replace e)
-    | Arg_by_ref x as a -> assert (var <> x); a
+  match rhs with
+    | Call (e, es) -> Call (replace e, List.map replace es)
+    | Expr e -> Expr (replace e)
+    | Read -> Read
 

@@ -12,9 +12,10 @@ open Instr
  * used, and the declaration can be removed by running `minimize_lifetimes`.
  *)
 let const_prop ({formals; instrs} : analysis_input) : instructions option =
+  None
   (* Finds the declarations that can be used for constant propagation.
      Returns a list of (pc, x, l) where `const x = l` is defined at pc `pc`. *)
-  let rec find_candidates instrs pc acc =
+  (* let rec find_candidates instrs pc acc =
     if pc = Array.length instrs then acc
     else match[@warning "-4"] instrs.(pc) with
     | Decl_const (x, Simple(Constant(l))) ->
@@ -110,10 +111,13 @@ let const_prop ({formals; instrs} : analysis_input) : instructions option =
   in
 
   work instrs
+     *)
 
 open Transform_utils
 
-let make_constant (({formals; instrs} as inp) : analysis_input) : instructions option =
+let make_constant (({formals; instrs}) : analysis_input) : instructions option =
+  None
+    (*
   let required = Analysis.required inp in
   let constant var pc =
     match[@warning "-4"] instrs.(pc) with
@@ -162,3 +166,4 @@ let make_constant (({formals; instrs} as inp) : analysis_input) : instructions o
   in
   let () = apply 0 in
   change_instrs (fun pc -> changes.(pc)) inp
+       *)

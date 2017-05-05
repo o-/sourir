@@ -37,8 +37,9 @@ let remove_unreachable_code ({instrs} as inp : analysis_input) : instructions op
   in
   change_instrs transform inp
 
-let remove_unused_decl ({instrs} as inp : analysis_input) : instructions option =
-  let open Analysis in
+let remove_unused_decl ({instrs} : analysis_input) : instructions option =
+  None
+  (*let open Analysis in
   let required = Analysis.required inp in
   let uses = Analysis.uses inp in
   let aliased = Analysis.aliased inp in
@@ -53,4 +54,4 @@ let remove_unused_decl ({instrs} as inp : analysis_input) : instructions option 
     | _ ->
       Unchanged
   in
-  change_instrs transform inp
+  change_instrs transform inp *)
