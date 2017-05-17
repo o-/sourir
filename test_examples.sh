@@ -20,15 +20,34 @@ function cleanup {
 }
 trap cleanup EXIT
 
+function runonetest {
+  TEST=$1
+  OPT=$2
+  INP=$3
+  yes $INP | timeout 20 $SOURIR "$TEST" --quiet > $TEMPDIR/$1.out
+  yes $INP | timeout 20 $SOURIR "$TEST" --quiet --opt $OPT > $TEMPDIR/$1.opt.out
+  diff $TEMPDIR/$1.out $TEMPDIR/$1.opt.out > /dev/null
+  if [[ $? -ne 0 ]]; then
+    echo "Test $TEST with optimizations $OPT and input $INP differed in output"
+    return 1
+  fi
+}
+
 # Test file $1
 function runtest {
-  echo "running test $1"
-  yes 0 | $SOURIR "$1" --quiet --opt all > $TEMPDIR/$1.opt.out && \
-  yes 0 | $SOURIR "$1" --quiet > $TEMPDIR/$1.out && \
-  diff $TEMPDIR/$1.out $TEMPDIR/$1.opt.out > /dev/null && \
-  yes 1 | $SOURIR "$1" --quiet --opt all > $TEMPDIR/$1.opt.out && \
-  yes 1 | $SOURIR "$1" --quiet > $TEMPDIR/$1.out && \
-  diff $TEMPDIR/$1.out $TEMPDIR/$1.opt.out > /dev/null
+  TEST=$1
+  runonetest "$TEST" all 0 && \
+    runonetest "$TEST" all 1 && \
+    runonetest "$TEST" all 3 && \
+    runonetest "$TEST" prune 0 && \
+    runonetest "$TEST" prune,const_fold 0 && \
+    runonetest "$TEST" prune,min_live,const_fold 0 && \
+    runonetest "$TEST" prune,min_live,hoist_drop 0 && \
+    runonetest "$TEST" const_fold 0 && \
+    runonetest "$TEST" hoist_assign 0 && \
+    runonetest "$TEST" hoist_drop 0 && \
+    runonetest "$TEST" min_live 0 && \
+    runonetest "$TEST" min_live 1
 }
 
 # Iterate over examples in directory
