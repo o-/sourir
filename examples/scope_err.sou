@@ -1,0 +1,13 @@
+function main()
+stop 0
+
+function obj_check (var obj, var tpe)
+    var candidate
+    branch (obj == nil) error l1
+  l1:
+    candidate <- obj[0]
+    branch (candidate != tpe) error done
+  done:
+    return true
+  error:
+    return false

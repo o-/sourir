@@ -573,9 +573,11 @@ let do_test_codemotion = function () ->
   " in
   let expected = parse "
        goto bla
+      loop_1:
+       goto loop
       loop:
        x <- (x + y_1)
-       branch (x == 10) end loop
+       branch (x == 10) end loop_1
       end:
        drop x
        drop y
@@ -606,9 +608,12 @@ let do_test_codemotion = function () ->
        var y_1 = 1
        var x = 1
        var y = 2
+       goto loop
+      loop_1:
+       goto loop
       loop:
        x <- (x + y_1)
-       branch (x == 10) end loop
+       branch (x == 10) end loop_1
       end:
        drop x
        drop y
@@ -637,7 +642,7 @@ let do_test_codemotion = function () ->
   let expected = parse "
        var a = 1
        var b = 2
-       branch (a==b) ba bb
+       branch (a==b) ba bb_2
       ba:
        var d = 1
        var d_1 = d
@@ -652,6 +657,8 @@ let do_test_codemotion = function () ->
       bb_1:
        drop d
        drop d_1
+       goto bb
+      bb_2:
        goto bb
       bb:
        drop a
@@ -680,7 +687,7 @@ let do_test_codemotion = function () ->
   let expected = parse "
        var a = 1
        var b = 2
-       branch (a==b) ba bb
+       branch (a==b) ba bb_3
       ba:
        var d = 1
        var d_1 = d
@@ -697,6 +704,8 @@ let do_test_codemotion = function () ->
       bb_2:
        drop d
        drop d_1
+       goto bb
+      bb_3:
        goto bb
       bb:
        drop a
@@ -767,12 +776,16 @@ let do_test_minimize_lifetime = function () ->
   let expected = parse "
        var a = 12
        var b = false
-       branch b o1 o2
+       branch b o1 o2_1
       o1:
        a <- 1
        print a
-      o2:
        drop a
+       goto o2
+      o2_1:
+       drop a
+       goto o2
+      o2:
        print b
        drop b
        goto x
@@ -1158,25 +1171,6 @@ let do_test_push_drop () =
   test t 5 t;
   let t = parse "
     var x = 1
-    branch (1==1) l1 l2
-   l1:
-    goto l2
-   l2:
-    drop x
-    " in
-  let e = parse "
-    var x = 1
-    branch (1 == 1) l1 l2_1
-   l1:
-    goto l2
-   l2_1:
-    goto l2
-   l2:
-    drop x
-   " in
-  test t 5 e;
-  let t = parse "
-    var x = 1
     branch (1==1) e1 e2
    e1:
     goto l
@@ -1272,47 +1266,6 @@ let do_test_drop_driver () =
     drop x
     print 2
     stop 0
-  |expect};
-  test "x" {given|
-    var x = 1
-    branch (1 == 1) la lb
-   la:
-    branch (1 == 1) l1 l2
-   lb:
-    branch (2 == 2) l2 l3
-   l1:
-    print 1
-    goto die_ende
-   l2:
-    print 2
-    goto die_ende
-   l3:
-    print 3
-    goto die_ende
-  die_ende:
-    drop x
-    stop 0
-  |given} {expect|
-     branch (1 == 1) la lb
-    la:
-     branch (1 == 1) l1 l2_2
-    lb:
-     branch (2 == 2) l2_1 l3
-    l1:
-     print 1
-     goto die_ende
-    l2_1:
-     goto l2
-    l2_2:
-     goto l2
-    l2:
-     print 2
-     goto die_ende
-    l3:
-     print 3
-     goto die_ende
-    die_ende:
-     stop 0
   |expect};
   ()
 

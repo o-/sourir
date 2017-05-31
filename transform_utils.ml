@@ -29,7 +29,9 @@ let change_instrs (transform : pc -> instruction_change) ({formals; instrs} : an
   acc_instr 0 [] false
 
 
-(* Splits all edges that have multi-predecessors branching *)
+(* Splits all edges that have multi-predecessors branching.
+ * After this step a branch is guaranteed to be the sole predecessor of its target labels.
+ * Only gotos are allowed to merge control flow. *)
 let normalize_graph instrs =
   let rec normalize instrs preds pc =
     let is_branch pred_pc = match[@warning "-4"] instrs.(pred_pc) with
@@ -38,9 +40,10 @@ let normalize_graph instrs =
     if pc = Array.length instrs then instrs
     else match[@warning "-4"] instrs.(pc) with
       | Label l ->
-          let branches = List.filter (fun p ->
+          let branches, gotos = List.partition (fun p ->
             is_branch p) preds.(pc) in
-          if List.length branches < 2 then normalize instrs preds (pc+1)
+          if branches = [] || (List.length branches = 1 && gotos = [])
+          then normalize instrs preds (pc+1)
           else begin
             let branch_pc = List.hd branches in
             let fixed, _ = Edit.split_edge instrs preds branch_pc l pc in

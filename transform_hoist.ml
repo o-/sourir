@@ -30,55 +30,39 @@ let push_instr cond instrs pc : push_status =
     when List.exists (fun pc -> is_blocking instrs.(pc)) preds.(pc_above)
     -> Blocked
   | Label label ->
-    (*
-       We don't want to push over branches; they are barriers
-       that will pull in another phase.
-
-       But, if we have several predecessors, some of which are
-       branches, we need to split those branch edges to push
-       independently to all predecessor edges.
-    *)
     let is_branch pred_pc = match[@warning "-4"] instrs.(pred_pc) with
       | Branch _ -> true
       | _ -> false in
-    begin match List.find is_branch preds.(pc_above) with
-    | branch_pc ->
-      if preds.(pc_above) = [branch_pc] then Need_pull branch_pc
-      else begin
-        (* multi-predecessor case, one of which is a branch:
-           we just split the branch edge -- doing anything more
-           would be fragile as we changed the instructions.
-
-           Iterating this transform will eventually remove all
-           branch edges from our (multi)predecessors, so that the
-           Not_found case below will do the final push. *)
-        let (_instrs, pc_map) as edit =
-          Edit.split_edge instrs preds branch_pc label pc_above in
-        Work (edit, [pc_map pc])
-      end
-   | exception Not_found ->
-     (* multi-predecessor case, with no multi-successor predecessor (no branch);
-        we can move the drop above all predecessors. A predecessor in (pc)
-        may be a Goto to this label, in which case we move the drop above it,
-        or a normal instruction (control flow falls to this label without a jump)
-        in which case we move the drop below it. *)
-     let move_and_work pred_pc =
-       match[@warning "-4"] instrs.(pred_pc) with
-       | Goto label_ ->
-         assert (label = label_);
-         (pred_pc, 0, [| to_move |]), (fun pc_map -> pc_map pred_pc - 1)
-       | _ ->
-         (pred_pc+1, 0, [| to_move |]), (fun pc_map -> pc_map pred_pc + 1)
-     in
-     let moves, next = List.split (List.map move_and_work preds.(pc_above)) in
-     let delete = (pc, 1, [||]) in
-     let (_instrs, pc_map) as edit = Edit.subst_many instrs (delete :: moves) in
-     let worklist =
-       next
-       |> List.map (fun next -> next pc_map)
-       |> List.sort Pervasives.compare in
-     Work (edit, worklist)
-   end
+    let branches, gotos = List.partition is_branch preds.(pc_above) in
+    begin match branches, gotos with
+    | [branch_pc],[] ->
+      Need_pull branch_pc
+    | [],gotos ->
+      (* multi-predecessor case, with no multi-successor predecessor (no branch);
+         we can move the drop above all predecessors. A predecessor in (pc)
+         may be a Goto to this label, in which case we move the drop above it,
+         or a normal instruction (control flow falls to this label without a jump)
+         in which case we move the drop below it. *)
+      let move_and_work pred_pc =
+        match[@warning "-4"] instrs.(pred_pc) with
+        | Goto label_ ->
+          assert (label = label_);
+          (pred_pc, 0, [| to_move |]), (fun pc_map -> pc_map pred_pc - 1)
+        | _ ->
+          (pred_pc+1, 0, [| to_move |]), (fun pc_map -> pc_map pred_pc + 1)
+      in
+      let moves, next = List.split (List.map move_and_work gotos) in
+      let delete = (pc, 1, [||]) in
+      let (_instrs, pc_map) as edit = Edit.subst_many instrs (delete :: moves) in
+      let worklist =
+        next
+        |> List.map (fun next -> next pc_map)
+        |> List.sort Pervasives.compare in
+      Work (edit, worklist)
+    | _ ->
+      (* Multiple branches as successors is ruled out by normalize graph *)
+      assert(false)
+    end
   | _ as instr ->
     if is_eliminating instr then Work (edit [|to_move|], [pc_above])
     else if is_annihilating instr then Stop (edit [||])
@@ -194,11 +178,13 @@ module Drop = struct
   let is_eliminating var instr =
     match[@warning "-4"] instr with
     | Assign (x, _) -> x = var
+    | Array_assign (x, _, _) -> x = var
     | _ -> false
 
   let is_annihilating var instr =
     match[@warning "-4"] instr with
     | Decl_var (x, _) -> x = var
+    | Decl_array (x, _) -> x = var
     | _ -> false
 
   let conditions_var var = {
@@ -216,6 +202,7 @@ module Drop = struct
     pull is_target (conditions_var var) instrs
 
   let apply : transform_instructions = fun {formals; instrs} ->
+    let instrs = Transform_utils.normalize_graph instrs in
     let collect vars instr =
       match[@warning "-4"] instr with
       | Drop x -> VarSet.add x vars
