@@ -99,7 +99,7 @@ let split_edge instrs preds pc label pc' =
       | _ -> invalid_arg "split_edge"
     end
   in
-  let substs = add_split_edge :: List.flatten (List.map fix_pred preds.(pc')) in
+  let substs = add_split_edge :: List.flatten (List.map fix_pred (preds pc')) in
   subst_many instrs substs
 
 let replace_uses old_name new_name = object (self)

@@ -3,7 +3,8 @@ open Types
 open Transform_utils
 
 let (insert_returns : transform_instructions) = fun {formals; instrs} ->
-  let stops = Analysis.stops instrs in
+  let cfg = Cfg.cfg_of_instructions instrs in
+  let stops = Cfg.stops cfg in
   let add_return pc =
     if not (List.mem pc stops) then Unchanged
     else match[@warning "-4"] instrs.(pc) with
@@ -15,13 +16,16 @@ let transform_with_prepass ~prepass transform = fun input ->
   let input = match prepass input with
     | None -> input
     | Some instrs -> {input with instrs} in
-  transform input
+  match transform input with
+  | None -> None
+  | Some instrs -> Transform_utils.normalize_graph {input with instrs}
 
 let add_drops : transform_instructions =
   let add_drops ({formals; instrs} as input) =
     (* assume [insert_returns] has run *)
     let scope = Scope.infer input in
-    let stops = Analysis.stops instrs in
+    let cfg = Cfg.cfg_of_instructions instrs in
+    let stops = Cfg.stops cfg in
     let add_drops pc =
       if not (List.mem pc stops) then Unchanged
       else match[@warning "-4"] instrs.(pc) with

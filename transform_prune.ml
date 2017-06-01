@@ -27,4 +27,6 @@ let branch_prune : transform_instructions = fun input ->
       else Unchanged
     | _ -> Unchanged
   in
-  change_instrs transform input
+  match change_instrs transform input with
+  | None -> None
+  | Some instrs -> Transform_utils.normalize_graph {input with instrs}

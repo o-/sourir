@@ -3,16 +3,17 @@ open Types
 open Transform_utils
 
 let remove_jmp : transform_instructions = fun ({instrs; _} as inp) ->
-  let pred = Analysis.predecessors instrs in
-  let succ = Analysis.successors instrs in
+  let cfg = Cfg.cfg_of_instructions instrs in
+  let pred = Cfg.predecessors cfg in
+  let succ = Cfg.successors cfg in
   let transform pc =
     if (pc+1) = Array.length instrs then Unchanged else
     match[@warning "-4"] instrs.(pc), instrs.(pc+1) with
-    | Goto l1, Label l2 when l1 = l2 && pred.(pc+1) = [pc] ->
+    | Goto l1, Label l2 when l1 = l2 && (pred (pc+1)) = [pc] ->
       Remove (if is_checkpoint_label l1 then 1 else 2)
     | Label l, _ when
-        pred.(pc) = [pc-1] &&
-        succ.(pc-1) = [pc] &&
+        (pred pc) = [pc-1] &&
+        (succ (pc-1)) = [pc] &&
         not (is_checkpoint_label l) ->
         (* A label is unused if the previous instruction is the only predecessor
          * unless the previous instruction jumps to it. The later can happen

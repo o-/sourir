@@ -26,9 +26,12 @@ let () =
       Parse.report_error error;
       exit 2
   in
+  let program = Transform.normalize_graph program in
+  Printf.printf "Normalized: %s\n" (Disasm.disassemble_s program);
 
   opts := if !opts = ["all"] then Transform.all_opts else !opts;
 
+  ignore (Scope.check_program program);
   begin try Scope.check_program program with
   | Scope.ScopeExceptionAt _ as exn ->
     Printf.eprintf "Scope error in the source program:\n";

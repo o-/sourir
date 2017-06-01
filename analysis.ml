@@ -18,49 +18,7 @@ module Position = struct
     | Instr x, Instr y -> Pervasives.compare x y
 end
 
-module PcSet = Set.Make(Pc)
 module PosSet = Set.Make(Position)
-
-let successors_at (instrs : instructions) pc : pc list =
-  let pc' = pc + 1 in
-  let instr = instrs.(pc) in
-  let resolve = Instr.resolve instrs in
-  let all_succ =
-    match instr with
-    | Decl_var _ | Decl_array _
-    | Assign _ | Array_assign _
-    | Drop _ | Read _ | Call _ | Label _
-    | Comment _ | Osr _ | Print _ | Assert _ ->
-      let is_last = pc' = Array.length instrs in
-      if is_last then [] else [pc']
-    (* those are the instructions which manipulate controlflow:  *)
-    | Stop _ | Return _ -> []
-    | Goto l -> [resolve l]
-    | Branch (_e, l1, l2) -> [resolve l1; resolve l2]
-  in
-  PcSet.elements (PcSet.of_list all_succ)
-
-let successors (instrs : instructions) : pc list array =
-  let succs_at pc = successors_at instrs pc in
-  Array.map succs_at (pcs instrs)
-
-let predecessors (instrs : instructions) : pc list array =
-  let preds = Array.map (fun _ -> []) instrs in
-  let mark_successor pc pc' =
-    preds.(pc') <- pc :: preds.(pc') in
-  for pc = 0 to Array.length instrs - 1 do
-    List.iter (mark_successor pc) (successors_at instrs pc)
-  done;
-  assert (Array.length instrs = Array.length preds);
-  preds
-
-let starts (instrs : instructions) = [0]
-
-let stops (instrs : instructions) =
-  let succs = successors instrs in
-  let is_exit pc = succs.(pc) = [] in
-  let pcs = Array.to_list (pcs instrs) in
-  List.filter is_exit pcs
 
 let osrs (instrs : instructions) =
   let is_osr pc = match[@warning "-4"] instrs.(pc) with
@@ -69,7 +27,7 @@ let osrs (instrs : instructions) =
   let pcs = Array.to_list (pcs instrs) in
   List.filter is_osr pcs
 
-let dataflow_analysis (next : pc list array)
+let dataflow_analysis (next : pc -> pc list)
                       (init_state : ('a * pc) list)
                       (instrs : instructions)
                       (merge : pc -> 'a -> 'a -> 'a option)
@@ -89,7 +47,7 @@ let dataflow_analysis (next : pc list array)
         | Some new_state ->
             program_state.(pc) <- merged;
             let updated = update pc new_state in
-            let continue = next.(pc) in
+            let continue = next pc in
             let new_work = List.map (fun pc' -> (updated, pc')) continue in
             work (new_work @ rest)
         end
@@ -106,20 +64,22 @@ let make_total result =
     | Some res -> res
 
 let forward_analysis init_state instrs merge update =
-  let successors = successors instrs in
-  let starts = starts instrs in
+  let cfg = Cfg.cfg_of_instructions instrs in
+  let successors = Cfg.successors cfg in
+  let starts = Cfg.starts cfg in
   assert (starts <> []);
   let init = List.map (fun pos -> (init_state, pos)) starts in
   make_total (dataflow_analysis successors init instrs merge update)
 
 let backwards_analysis init_state instrs merge update =
-  let predecessors = predecessors instrs in
-  let exits = stops instrs @ osrs instrs in
+  let cfg = Cfg.cfg_of_instructions instrs in
+  let predecessors = Cfg.predecessors cfg in
+  let exits = Cfg.stops cfg @ osrs instrs in
   assert (exits <> []);
   let init = List.map (fun pos -> (init_state, pos)) exits in
   make_total (dataflow_analysis predecessors init instrs merge update)
 
-let find (next : pc list array)
+let find (next : pc -> pc list)
          (start : pc)
          (instrs : instructions)
          (predicate : pc -> bool) : pc =
@@ -131,14 +91,15 @@ let find (next : pc list array)
     | pc :: rest when predicate pc ->
       pc                (* fits predicate *)
     | pc :: rest ->
-      let seen, todo = PcSet.add pc seen, next.(pc) @ todo in
+      let seen, todo = PcSet.add pc seen, (next pc) @ todo in
       work todo seen    (* schedule next *)
   in
   work [start] PcSet.empty
 
 let find_first (instrs : instructions)
                (predicate : pc -> bool) : pc =
-  let succ = successors instrs in
+  let cfg = Cfg.cfg_of_instructions instrs in
+  let succ = Cfg.successors cfg in
   find succ 0 instrs predicate
 
 (* Use - Def style analysis *)

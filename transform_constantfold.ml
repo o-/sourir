@@ -114,4 +114,4 @@ let const_fold : transform_instructions = fun {formals; instrs} ->
   let new_instrs = Array.mapi transform_instr instrs in
   if new_instrs = instrs
   then None
-  else Some new_instrs
+  else Transform_utils.normalize_graph {instrs=new_instrs;formals}

@@ -92,6 +92,7 @@ let check_function (func : afunction) =
         | Some annot ->
           check inferred annot
       in
+      ignore(check ());
       try check () with
       | e -> raise (ScopeExceptionAt (func.name, version.label, e))
     ) func.body

@@ -44,6 +44,7 @@ let as_opt_program (transform : opt_function) : opt_prog =
     | Some instrs -> true, instrs in
   fun prog ->
     let changed, main =
+      ignore (transform' prog.main);
       try transform' prog.main
       with exn ->
         prerr_endline "Optimization Failure on the following program:";
@@ -140,3 +141,12 @@ let optimize (opts : string list) (prog : program) : program option =
     else optimizer
   in
   optimizer prog
+
+let normalize_graph program =
+  let normalizer = as_opt_program
+          (as_opt_function Transform_utils.normalize_graph) in
+  match normalizer program with
+  | Some program -> program
+  | None -> program
+
+

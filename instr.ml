@@ -44,8 +44,7 @@ type 'a position = {
   pos : 'a;
 }
 
-type instructions = instruction array
-and instruction =
+type instruction =
   | Decl_var of variable * expression
   | Decl_array of variable * array_def
   | Call of variable * expression * (argument list)
@@ -60,7 +59,7 @@ and instruction =
   | Print of expression
   | Assert of expression
   | Stop of expression
-  | Osr of {cond : expression list; target : label position; map : osr_def list; }
+  | Osr of {label : label; cond : expression list; target : label position; map : osr_def list; }
   | Comment of string
 and array_def =
   | Length of expression
@@ -99,6 +98,168 @@ and primop =
   | Array_index
   | Array_length
 
+type instructions = instruction array
+
+exception Unbound_label of label
+
+let resolve (code : instructions) (label : string) =
+  let rec loop i =
+    if i >= Array.length code then raise (Unbound_label label)
+    else if code.(i) = Label label then i
+    else loop (i + 1)
+  in loop 0
+
+let resolve_osr (code : instructions) (l : string) =
+  let rec loop i =
+    if i >= Array.length code then raise (Unbound_label l) else
+    match[@warning "-4"] code.(i) with
+    | Osr {label} when label = l -> i
+    | _ -> loop (i + 1)
+  in loop 0
+
+
+module PcSet = Set.Make(Pc)
+
+module Cfg = struct
+  type successors =
+    | Exit_point
+    | Branch_target of bb * bb
+    | Fallthrough_target of bb
+    | Goto_target of bb
+  and predecessors =
+    | Entry_point
+    | Branch_bb_source of bb
+    | Goto_bb_source of bb list
+    | Fallthrough_bb_source of bb
+  and bb = {
+    mutable entry : pc;
+    mutable exit : pc;
+    mutable succ : successors;
+    mutable pred : predecessors;
+  }
+  and code = bb list
+
+  let invalid = {entry = -1; exit = -1; succ = Exit_point; pred = Entry_point}
+
+  exception InvalidLabelReuse of pc
+  exception InvalidFallthrough of pc
+
+  let cfg_of_instructions instrs =
+    let resolve = resolve instrs in
+    let first = {entry = 0; exit = 0; succ = Exit_point; pred = Entry_point} in
+    let bbs = Array.map (fun _ -> invalid) instrs in
+    let rec construct_cfg pc cur =
+      if pc = Array.length instrs then cur.exit <- (pc-1)
+      else if (bbs.(pc) <> invalid && cur.exit = -1) then raise (InvalidFallthrough pc)
+      else if (bbs.(pc) = invalid) then begin
+        let pc' = pc+1 in
+        match instrs.(pc) with
+        | Decl_var _ | Decl_array _
+        | Assign _ | Array_assign _
+        | Drop _ | Read _ | Call _
+        | Comment _ | Osr _ | Print _ | Assert _ ->
+            bbs.(pc) <- cur;
+            let is_last = pc' = Array.length instrs in
+            if is_last
+            then begin
+              assert(cur.succ = Exit_point);
+              cur.exit <- pc
+            end
+            else construct_cfg pc' cur
+        | Stop _ | Return _ ->
+            bbs.(pc) <- cur;
+            assert(cur.succ = Exit_point);
+            cur.exit <- pc
+        | Goto l ->
+            bbs.(pc) <- cur;
+            cur.exit <- pc;
+            let target = resolve l in
+            if bbs.(target) = invalid then begin
+              let next = {entry = target; exit = -1;
+                          succ = Exit_point; pred = Goto_bb_source [cur]} in
+              cur.succ <- Goto_target next;
+              construct_cfg target next
+            end else begin
+              let next = bbs.(target) in
+              cur.succ <- Goto_target next;
+              begin match[@warning "-4"] next.pred with
+              | Goto_bb_source preds ->
+                  if not (List.mem cur preds) then begin
+                    next.pred <- Goto_bb_source (cur :: preds);
+                    construct_cfg target next
+                  end
+              | _ ->
+                  (* Malformed. Only Gotos are allowed to share a
+                   * target label *)
+                  raise (InvalidLabelReuse target);
+              end
+            end
+        | Branch (_, l1, l2) ->
+            bbs.(pc) <- cur;
+            cur.exit <- pc;
+            let t1, t2 = resolve l1, resolve l2 in
+            (* Malformed. Branch targets have to be used uniquely *)
+            if (bbs.(t1) <> invalid) then raise (InvalidLabelReuse t1);
+            if (bbs.(t2) <> invalid) then raise (InvalidLabelReuse t2);
+            let n1 = {entry = t1; exit = -1;
+                      succ = Exit_point; pred = Branch_bb_source cur} in
+            let n2 = {entry = t2; exit = -1;
+                      succ = Exit_point; pred = Branch_bb_source cur} in
+            cur.succ <- Branch_target (n1, n2);
+            construct_cfg t1 n1;
+            construct_cfg t2 n2
+        | Label l ->
+            if cur.entry <> pc then raise (InvalidFallthrough pc);
+            bbs.(pc) <- cur;
+            construct_cfg pc' cur
+      end
+    in
+    construct_cfg 0 first;
+    bbs
+
+  let successors cfg pc =
+    let bb = cfg.(pc) in
+    assert(bb <> invalid);
+    assert(bb.entry <= pc && bb.exit >= pc);
+    if pc < bb.exit
+    then [pc+1]
+    else match bb.succ with
+    | Fallthrough_target t -> [t.entry]
+    | Goto_target t -> [t.entry]
+    | Branch_target (t1, t2) -> [t1.entry; t2.entry]
+    | Exit_point -> []
+
+  let predecessors cfg pc =
+    let bb = cfg.(pc) in
+    assert(bb <> invalid);
+    assert(bb.entry <= pc && bb.exit >= pc);
+    if pc > bb.entry
+    then [pc-1]
+    else match bb.pred with
+    | Fallthrough_bb_source s ->
+        assert(s.exit = pc-1);
+        [s.exit]
+    | Goto_bb_source bs -> List.map (fun bb -> bb.exit) bs
+    | Branch_bb_source s -> [s.exit]
+    | Entry_point -> []
+
+  let starts cfg =
+    let acc starts bb =
+      if bb.pred = Entry_point
+      then PcSet.add bb.entry starts
+      else starts
+    in
+    PcSet.elements (Array.fold_left acc PcSet.empty cfg)
+
+  let stops cfg =
+    let acc exits bb =
+      if bb.succ = Exit_point
+      then PcSet.add bb.exit exits
+      else exits
+    in
+    PcSet.elements (Array.fold_left acc PcSet.empty cfg)
+end
+
 type scope_annotation =
   | ExactScope of VarSet.t
   | AtLeastScope of VarSet.t
@@ -134,15 +295,6 @@ type heap_value =
 type binding =
   | Val of value
   | Ref of address
-
-exception Unbound_label of label
-
-let resolve (code : instructions) (label : string) =
-  let rec loop i =
-    if i >= Array.length code then raise (Unbound_label label)
-    else if code.(i) = Label label then i
-    else loop (i + 1)
-  in loop 0
 
 let simple_expr_vars = function
   | Var x -> VarSet.singleton x
@@ -378,8 +530,9 @@ class map = object (m)
       Assert (m#expression e)
     | Stop e ->
       Stop (m#expression e)
-    | Osr {cond; target; map} ->
+    | Osr {label; cond; target; map} ->
       Osr {
+        label;
         cond = List.map m#expression cond;
         target = m#unique_pos target;
         map = List.map m#osr_map map;

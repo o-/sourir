@@ -2,7 +2,7 @@ open Instr
 open Types
 
 let freshen_assign ({instrs} as inp : analysis_input) (def : pc) future_pos =
-  let uses = Analysis.PcSet.elements (Analysis.uses inp def) in
+  let uses = PcSet.elements (Analysis.uses inp def) in
   let instr = instrs.(def) in
   match[@warning "-4"] instr with
   | Assign (x, exp) ->
@@ -85,4 +85,6 @@ let hoist_assignment : transform_instructions = fun ({formals; instrs} as inp) -
   match find_possible_move 0 with
   | None -> None
   | Some (from_pc, to_pc) ->
-    freshen_assign inp from_pc to_pc
+      match freshen_assign inp from_pc to_pc with
+      | Some instrs -> Transform_utils.normalize_graph {instrs;formals}
+      | None -> None

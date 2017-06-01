@@ -32,7 +32,7 @@ let insert_checkpoints (func:afunction) =
           version=version.label;
           pos=checkpoint_label pc;
         } in
-        Insert [Label (checkpoint_label pc); Osr {cond=[]; target; map=osr};]
+        Insert [Osr {label=(checkpoint_label pc); cond=[]; target; map=osr};]
     in
     if pc = 0 then Unchanged else
     match[@warning "-4"] instrs.(pc) with
@@ -92,9 +92,9 @@ let insert_assumption (func : afunction) osr_cond pc : version option =
     let cur_version = Instr.active_version func in
     let transform pc =
       match[@warning "-4"] cur_version.instrs.(pc) with
-      | Osr {cond; target; map} ->
+      | Osr {label;cond; target; map} ->
         let target = {target with version = cur_version.label} in
-        Replace [Osr {cond; target; map}]
+        Replace [Osr {label; cond; target; map}]
       | _ -> Unchanged
     in
     let inp = Analysis.as_analysis_input func cur_version in
@@ -105,7 +105,8 @@ let insert_assumption (func : afunction) osr_cond pc : version option =
 
   let version = next_version func in
   let instrs = version.instrs in
-  let preds = Analysis.predecessors version.instrs in
+  let cfg = Cfg.cfg_of_instructions version.instrs in
+  let preds = Cfg.predecessors cfg in
   (* Finds the highest up osr checkpoint in that basic block where the
    * assumption can be placed. *)
   let rec find_candidate_osr cond_vars pc acc =
@@ -113,13 +114,13 @@ let insert_assumption (func : afunction) osr_cond pc : version option =
     match[@warning "-4"] instrs.(pc) with
     | Osr _ -> find_candidate_osr cond_vars (pc-1) (Some pc)
     | Label _ ->
-      begin match[@warning "-4"] preds.(pc) with
+      begin match[@warning "-4"] (preds pc) with
       | [pred] -> find_candidate_osr cond_vars pred acc
       | _ -> acc
       end
     | _ ->
-      assert (preds.(pc) = [pc-1] || preds.(pc) = []);
-      if preds.(pc) <> [] && Instr.independent instrs.(pc) osr_cond
+      assert ((preds pc) = [pc-1] || (preds pc) = []);
+      if (preds pc) <> [] && Instr.independent instrs.(pc) osr_cond
       then find_candidate_osr cond_vars (pc-1) acc
       else acc
   in
@@ -128,8 +129,8 @@ let insert_assumption (func : afunction) osr_cond pc : version option =
   | None -> None
   | Some pc ->
     begin match[@warning "-4"] instrs.(pc) with
-    | Osr {cond; target; map} ->
-      instrs.(pc) <- Osr {cond=osr_cond::cond; target; map};
+    | Osr {label; cond; target; map} ->
+      instrs.(pc) <- Osr {label; cond=osr_cond::cond; target; map};
       Some { version with instrs }
     | _ -> assert (false)
     end
@@ -183,7 +184,8 @@ let insert_assumption (func : afunction) osr_cond pc : version option =
 let hoist_assumption : transform_instructions = fun ({instrs; _} as inp) ->
   let instrs = Array.copy instrs in
   let available = Analysis.valid_assumptions inp in
-  let preds = Analysis.predecessors instrs in
+  let cfg = Cfg.cfg_of_instructions instrs in
+  let preds = Cfg.predecessors cfg in
   let dominates = Analysis.dominates inp in
   let rec find_osrs pc acc =
     if pc = Array.length instrs then acc else
@@ -203,7 +205,7 @@ let hoist_assumption : transform_instructions = fun ({instrs; _} as inp) ->
     match[@warning "-4"] instrs.(pc) with
     | Osr _ -> find_candidate_osr osr_cond cond_vars (pc-1) (Some pc)
     | Label _ ->
-      let doms, rest = List.partition (fun pc' -> dominates pc' pc) preds.(pc) in
+      let doms, rest = List.partition (fun pc' -> dominates pc' pc) (preds pc) in
       begin match doms with
       | [dom] ->
         let all_guarded = List.for_all (fun pc' ->
@@ -216,8 +218,8 @@ let hoist_assumption : transform_instructions = fun ({instrs; _} as inp) ->
       | _ -> acc
       end
     | _ ->
-      assert (preds.(pc) = [pc-1] || preds.(pc) == []);
-      if preds.(pc) <> [] && Instr.independent instrs.(pc) osr_cond
+      assert ((preds pc) = [pc-1] || (preds pc) == []);
+      if (preds pc) <> [] && Instr.independent instrs.(pc) osr_cond
       then find_candidate_osr osr_cond cond_vars (pc-1) acc
       else acc
   in
@@ -225,7 +227,7 @@ let hoist_assumption : transform_instructions = fun ({instrs; _} as inp) ->
   let changed = ref false in
   let push_osr pc =
     match[@warning "-4"] instrs.(pc) with
-    | Osr {cond; target; map} ->
+    | Osr {label; cond; target; map} ->
       let try_push c =
         let cond_vars = expr_vars c in
         begin match find_candidate_osr c cond_vars (pc-1) None with
@@ -233,15 +235,15 @@ let hoist_assumption : transform_instructions = fun ({instrs; _} as inp) ->
         | Some pc' ->
           changed := true;
           begin match[@warning "-4"] instrs.(pc') with
-          | Osr {cond; target; map} ->
-            instrs.(pc') <- Osr {cond = c::cond; target; map}
+          | Osr {label; cond; target; map} ->
+            instrs.(pc') <- Osr {label; cond = c::cond; target; map}
           | _ -> assert (false)
           end;
           false
         end
       in
       let remaining = List.filter try_push cond in
-      instrs.(pc) <- Osr {cond=remaining; target; map}
+      instrs.(pc) <- Osr {label; cond=remaining; target; map}
     | _ -> assert (false)
   in
   List.iter push_osr osrs;

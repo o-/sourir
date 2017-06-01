@@ -19,7 +19,8 @@ let push_instr cond instrs pc : push_status =
   let pc_above = pc - 1 in
   let to_move = instrs.(pc) in
   let instr = instrs.(pc_above) in
-  let preds = Analysis.predecessors instrs in
+  let cfg = Cfg.cfg_of_instructions instrs in
+  let preds = Cfg.predecessors cfg in
   let edit new_instrs =
     Edit.subst instrs pc_above 2 new_instrs in
   match[@warning "-4"] instr with
@@ -27,7 +28,7 @@ let push_instr cond instrs pc : push_status =
     (* we are coming from the predecessors, cannot reach a Stop! *)
     assert false
   | Label label
-    when List.exists (fun pc -> is_blocking instrs.(pc)) preds.(pc_above)
+    when List.exists (fun pc -> is_blocking instrs.(pc)) (preds pc_above)
     -> Blocked
   | Label label ->
     (*
@@ -41,9 +42,9 @@ let push_instr cond instrs pc : push_status =
     let is_branch pred_pc = match[@warning "-4"] instrs.(pred_pc) with
       | Branch _ -> true
       | _ -> false in
-    begin match List.find is_branch preds.(pc_above) with
+    begin match List.find is_branch (preds pc_above) with
     | branch_pc ->
-      if preds.(pc_above) = [branch_pc] then Need_pull branch_pc
+      if (preds pc_above) = [branch_pc] then Need_pull branch_pc
       else begin
         (* multi-predecessor case, one of which is a branch:
            we just split the branch edge -- doing anything more
@@ -70,7 +71,7 @@ let push_instr cond instrs pc : push_status =
        | _ ->
          (pred_pc+1, 0, [| to_move |]), (fun pc_map -> pc_map pred_pc + 1)
      in
-     let moves, next = List.split (List.map move_and_work preds.(pc_above)) in
+     let moves, next = List.split (List.map move_and_work (preds pc_above)) in
      let delete = (pc, 1, [||]) in
      let (_instrs, pc_map) as edit = Edit.subst_many instrs (delete :: moves) in
      let worklist =
@@ -90,20 +91,21 @@ type pull_status =
   | Blocked
 
 let try_pull instrs pc_branch : pull_status =
-  let succs = Analysis.successors instrs in
+  let cfg = Cfg.cfg_of_instructions instrs in
+  let succs = Cfg.successors cfg in
   if pc_branch = Array.length instrs then Blocked else
   let instr_after_label pc =
     assert (match[@warning "-4"] instrs.(pc) with
         | Label _ -> true | _ -> false);
     instrs.(pc+1) in
-  let to_pull = List.map instr_after_label succs.(pc_branch) in
+  let to_pull = List.map instr_after_label (succs pc_branch) in
   let sample_instr = List.hd to_pull in
   let can_pull = List.for_all ((=) sample_instr) to_pull in
   if not can_pull then Blocked
   else begin
     let insert = (pc_branch, 0, [| sample_instr |]) in
     let delete label_pc = (label_pc + 1, 1, [||]) in
-    let deletes = List.map delete succs.(pc_branch) in
+    let deletes = List.map delete (succs pc_branch) in
     let (_instrs, pc_map) as edit = Edit.subst_many instrs (insert :: deletes) in
     Pulled_to (edit, pc_map pc_branch - 1)
   end
@@ -232,5 +234,5 @@ module Drop = struct
       | [] -> instrs, changed
     in
     let res, changed = work instrs (VarSet.elements dropped_vars) false in
-    if changed then Some res else None
+    if changed then Transform_utils.normalize_graph {instrs=res;formals} else None
 end

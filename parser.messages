@@ -126,7 +126,7 @@ Parsing an instruction, we parsed an identifier so far (variable or label).
 - if this is a label declaration, we expect a semicolon: "<label>:"
 - if this is an assignment, we expect a left arrow: "<var> <- <expression>"
 
-program: OSR LBRACKET NIL RBRACKET LPAREN IDENTIFIER COMMA IDENTIFIER COMMA IDENTIFIER RPAREN LBRACKET TRIPLE_DOT 
+program: OSR IDENTIFIER LBRACKET NIL RBRACKET LPAREN IDENTIFIER COMMA IDENTIFIER COMMA IDENTIFIER RPAREN LBRACKET TRIPLE_DOT 
 ##
 ## Ends in an error in state: 69.
 ##
@@ -142,7 +142,7 @@ osr instruction. The specification is a comma-separated list of terms of the for
 or just "mut x". For example,
 "osr [(a==1)] (Main,optimized,l2) [const x = e, mut y = &y, mut z]".
 
-program: OSR LBRACKET NIL RBRACKET LPAREN IDENTIFIER COMMA IDENTIFIER COMMA IDENTIFIER RPAREN TRIPLE_DOT 
+program: OSR IDENTIFIER LBRACKET NIL RBRACKET LPAREN IDENTIFIER COMMA IDENTIFIER COMMA IDENTIFIER RPAREN TRIPLE_DOT 
 ##
 ## Ends in an error in state: 68.
 ##
@@ -159,7 +159,7 @@ of terms of the form "const x = e" (where "e" is an expression),
 "osr [(a==1)] (Main,optimized,l2) [const x = e, mut y = &y, mut z]".
 
 
-program: OSR LBRACKET NIL RBRACKET LPAREN TRIPLE_DOT 
+program: OSR IDENTIFIER LBRACKET NIL RBRACKET LPAREN TRIPLE_DOT 
 ##
 ## Ends in an error in state: 61.
 ##
@@ -175,7 +175,7 @@ The complete instruction syntax is "osr [<conditions>] (<target>) [<osr-map>]",
 For example,
 "osr [(a==1)] (Main,optimized,l2) [const x = e, mut y = &y, mut z]".
 
-program: OSR LBRACKET NIL RBRACKET TRIPLE_DOT 
+program: OSR IDENTIFIER LBRACKET NIL RBRACKET TRIPLE_DOT 
 ##
 ## Ends in an error in state: 60.
 ##
@@ -191,7 +191,7 @@ The complete instruction syntax is "osr [<conditions>] (<target>) [<osr-map>]",
 For example,
 "osr [(a==1)] (Main,optimized,l2) [const x = e, mut y = &y, mut z]".
 
-program: OSR LBRACKET TRIPLE_DOT 
+program: OSR IDENTIFIER LBRACKET TRIPLE_DOT 
 ##
 ## Ends in an error in state: 57.
 ##

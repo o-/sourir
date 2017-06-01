@@ -424,20 +424,39 @@ let assert_equal_sorted li1 li2 =
   assert_equal (List.sort compare li1) (List.sort compare li2)
 
 let test_pred = parse
-"l1:
+" goto l1
+ l1_1:
+  goto l1
+ l1_2:
+  goto l1
+ l1:
   goto l2
  l3:
-  branch x l1 l2
+  branch x l1_1 l2_1
+ l2_1:
+  goto l2
  l2:
-  branch x l1 l3
+  branch x l1_2 l3
   stop 0
   goto l1
 "
 
+let do_test_cfg = function () ->
+  let v = Instr.active_version test_pred.main in
+  let cfg = Cfg.cfg_of_instructions v.instrs in
+  let bb1 = cfg.(0) in
+  let bb2 = cfg.(2) in
+  let bb4 = cfg.(0) in
+  ()
+;;
+
+do_test_cfg ()
+
+
 let do_test_pred = function () ->
   let v = Instr.active_version test_pred.main in
-  let pred = Analysis.predecessors v.instrs in
-  let pred pc = pred.(pc) in
+  let cfg = Cfg.cfg_of_instructions v.instrs in
+  let pred = Cfg.predecessors cfg in
   assert_equal_sorted (pred 0) [3; 5; 7];
   assert_equal_sorted (pred 1) [0];
   assert_equal_sorted (pred 2) [5];
