@@ -346,9 +346,9 @@ let reduce conf =
     }
   | Branch (e, l1, l2) ->
      let b = get_bool (eval conf e) in
-     { conf with pc = resolve conf.instrs (if b then l1 else l2) }
+     { conf with pc = resolve conf.instrs (if b then (BranchLabel l1) else (BranchLabel l2)) }
   | Label _ -> { conf with pc = pc' }
-  | Goto label -> { conf with pc = resolve conf.instrs label }
+  | Goto label -> { conf with pc = resolve conf.instrs (MergeLabel label) }
   | Read x ->
     let (IO.Next (v, input')) = conf.input () in
     let heap, env = update conf.heap conf.env x v in

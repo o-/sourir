@@ -43,19 +43,8 @@ let push_instr cond instrs pc : push_status =
       | _ -> false in
     begin match List.find is_branch preds.(pc_above) with
     | branch_pc ->
-      if preds.(pc_above) = [branch_pc] then Need_pull branch_pc
-      else begin
-        (* multi-predecessor case, one of which is a branch:
-           we just split the branch edge -- doing anything more
-           would be fragile as we changed the instructions.
-
-           Iterating this transform will eventually remove all
-           branch edges from our (multi)predecessors, so that the
-           Not_found case below will do the final push. *)
-        let (_instrs, pc_map) as edit =
-          Edit.split_edge instrs preds branch_pc label pc_above in
-        Work (edit, [pc_map pc])
-      end
+      assert (preds.(pc_above) = [branch_pc]);
+      Need_pull branch_pc
    | exception Not_found ->
      (* multi-predecessor case, with no multi-successor predecessor (no branch);
         we can move the drop above all predecessors. A predecessor in (pc)
@@ -65,7 +54,7 @@ let push_instr cond instrs pc : push_status =
      let move_and_work pred_pc =
        match[@warning "-4"] instrs.(pred_pc) with
        | Goto label_ ->
-         assert (label = label_);
+         assert (label = (MergeLabel label_));
          (pred_pc, 0, [| to_move |]), (fun pc_map -> pc_map pred_pc - 1)
        | _ ->
          (pred_pc+1, 0, [| to_move |]), (fun pc_map -> pc_map pred_pc + 1)
