@@ -44,19 +44,20 @@ let as_opt_program (transform : opt_function) : opt_prog =
     | Some instrs -> true, instrs in
   fun prog ->
     let changed, main =
-      try transform' prog.main
-      with exn ->
+      transform' prog.main
+      (*with exn ->
         prerr_endline "Optimization Failure on the following program:";
         let buf = Buffer.create 42 in
         Disasm.disassemble buf prog;
         prerr_string (Buffer.contents buf);
-        raise exn
+        raise exn *)
     in
     let reduce (changed, functions) func =
       let c, f = transform' func in
       (changed||c, f::functions) in
     let changed, functions = List.fold_left reduce (changed, []) prog.functions in
     let functions = List.rev functions in
+    (* Printf.printf "%s\n\n" (Disasm.disassemble_instrs_s (List.hd main.body).instrs); *)
     if changed then Some { functions; main; } else None
 
 let optimistic_as_opt_function (transformation : create_optimistic_version)

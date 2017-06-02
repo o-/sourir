@@ -73,6 +73,8 @@ let () =
       Printf.eprintf "fallthrough label at line %d is not allowed\n" (pc+1);
     | Check.EntryPointIsLabel ->
       Printf.eprintf "the first instruction cannot be a label";
+    | Check.DuplicateLabel l ->
+      Printf.eprintf "label %s used multiple times" l;
     | _ -> assert(false)
     end;
     exit 1

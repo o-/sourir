@@ -18,7 +18,7 @@ exception VersionDoesNotExist of identifier * label
 exception InvalidNumArgs of pc
 exception InvalidArgument of pc * argument
 exception BranchLabelReused of pc
-exception DuplicateLabel of label_type
+exception DuplicateLabel of label
 exception MissingReturn
 
 exception FallthroughLabel of pc
@@ -145,7 +145,7 @@ let well_formed prog =
         if (preds.(t2) <> [pc]) then raise (BranchLabelReused t2);
         if (t1 = t2) then raise (BranchLabelReused t1);
         check_fun_ref instr
-      | Label l ->
+      | Label (MergeLabel l| BranchLabel l) ->
         if List.mem l !seen then raise (DuplicateLabel l);
         seen := l :: !seen;
         (* Entry point cannot be a label because if it where a branch
