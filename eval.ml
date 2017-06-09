@@ -264,15 +264,15 @@ let reduce conf =
     List.fold_left eval_arg Env.empty args
   in
 
-  let build_osr_frame varmap old_env old_heap =
-    let add (env, heap) (Osr_var (x, e)) =
-      (Env.add x (Val (eval conf e)) env, heap)
+  let build_osr_frame varmap old_env =
+    let add env (Osr_var (x, e)) =
+      Env.add x (Val (eval conf e)) env
     in
-    List.fold_left add (Env.empty, old_heap) varmap
+    List.fold_left add Env.empty varmap
   in
 
-  let build_extra_osr_frame (heap, frames) {cont_pos; cont_res; varmap} =
-    let osr_env, heap = build_osr_frame varmap conf.env heap in
+  let build_extra_osr_frame frames {cont_pos; cont_res; varmap} =
+    let osr_env = build_osr_frame varmap conf.env in
     let func = lookup_fun conf.program cont_pos.func in
     let version = get_version func cont_pos.version in
     (* osr target is a label, but continuation uses pc,
@@ -281,7 +281,7 @@ let reduce conf =
       func = cont_pos.func;
       version = cont_pos.version;
       pos = resolve_osr version.instrs cont_pos.pos} in
-    heap, (cont_res, osr_env, pos) :: frames
+    (cont_res, osr_env, pos) :: frames
   in
 
   match instruction conf with
@@ -394,16 +394,14 @@ let reduce conf =
         pc = pc';
       }
     else begin
-      let osr_env, heap = build_osr_frame varmap conf.env conf.heap in
-      let heap, extra_frames =
-        List.fold_left build_extra_osr_frame (heap, []) (List.rev frame_maps) in
+      let osr_env = build_osr_frame varmap conf.env in
+      let extra_frames = List.fold_left build_extra_osr_frame [] (List.rev frame_maps) in
       let func = Instr.lookup_fun conf.program func in
       let version = Instr.get_version func version in
       let instrs = version.instrs in
       { conf with
         pc = resolve_osr instrs label;
         env = osr_env;
-        heap;
         instrs = instrs;
         cur_fun = func.name;
         cur_vers = version.label;
