@@ -108,6 +108,29 @@ and binop =
   | And
   | Or
 
+let negate = function
+  | Simple (Var x)                  -> Some (Unop (Not, (Var x)))
+  | Simple (Constant (Bool false))  -> Some (Simple (Constant (Bool true)))
+  | Simple (Constant (Bool true))   -> Some (Simple (Constant (Bool false)))
+  | Unop (Not, se)                  -> Some (Simple se)
+  | Binop ((Neq|Eq|Gte|Gt|Lte|Lt) as op, e1, e2) ->
+      let nop = begin match op with
+      | Eq   -> Neq
+      | Neq  -> Eq
+      | Lt   -> Gte
+      | Lte  -> Gt
+      | Gt   -> Lte
+      | Gte  -> Lt
+      | _    -> assert(false)
+      end in
+      Some (Binop (nop, e1, e2))
+  | Simple (Constant (Nil| Int _|Fun_ref _|Array _))
+  | Binop ((Plus|Sub|Mult|Div|Mod), _, _)
+  | Binop ((And|Or), _, _)  (* TODO *)
+  | Unop (Neg, _)
+  | Array_index _
+  | Array_length _ -> None
+
 type scope_annotation =
   | ExactScope of VarSet.t
   | AtLeastScope of VarSet.t

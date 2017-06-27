@@ -88,23 +88,28 @@ let const_fold = as_opt_function const_fold_instrs
 let minimize_liverange = as_opt_function minimize_liverange_instrs
 let hoist_assignment = as_opt_function Transform_hoist_assign.hoist_assignment
 let hoist_drop = as_opt_function Transform_hoist.Drop.apply
-let branch_prune = optimistic_as_opt_function
+let branch_prune_instrs = combine_transform_instructions [
+    Transform_prune.branch_prune;
+    Transform_cleanup.remove_unreachable_code;]
+let branch_prune = as_opt_function branch_prune_instrs
+let branch_prune_false = optimistic_as_opt_function
     (Transform_prune.insert_branch_pruning_assumption)
-    (combine_transform_instructions [
-       Transform_prune.branch_prune;
-       Transform_cleanup.remove_unreachable_code;])
-let branch_prune_no_hoist = optimistic_as_opt_function
+    branch_prune_instrs
+let branch_prune_false_no_hoist = optimistic_as_opt_function
     (Transform_prune.insert_branch_pruning_assumption ~hoist:false)
-    (combine_transform_instructions [
-       Transform_prune.branch_prune;
-       Transform_cleanup.remove_unreachable_code;])
+    branch_prune_instrs
+let branch_prune_true = optimistic_as_opt_function
+    (Transform_prune.insert_branch_pruning_assumption ~assume:false)
+    branch_prune_instrs
 let normalize_graph = as_opt_program (as_opt_function normalize_graph_instrs)
 
 (* Main optimizer loop *)
 exception UnknownOptimization of string
 
-let all_opts = ["prune";
-                "prune_no_hoist";
+let all_opts = ["prune_false";
+                "prune_true";
+                "prune";
+                "prune_false_no_hoist";
                 "hoist_guards";
                 "const_fold";
                 "hoist_assign";
@@ -124,8 +129,12 @@ let optimize (opts : string list) (prog : program) : program option =
       as_opt_program minimize_liverange
     | "const_fold" ->
       as_opt_program const_fold
-    | "prune_no_hoist" ->
-      as_opt_program branch_prune_no_hoist
+    | "prune_false_no_hoist" ->
+      as_opt_program branch_prune_false_no_hoist
+    | "prune_false" ->
+      as_opt_program branch_prune_false
+    | "prune_true" ->
+      as_opt_program branch_prune_true
     | "prune" ->
       as_opt_program branch_prune
     | "hoist_guards" ->

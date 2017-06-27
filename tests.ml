@@ -417,7 +417,7 @@ let test_branch_pruning_exp prog expected =
   let open Transform in
   let prog = try_opt (as_opt_program Transform_assumption.insert_checkpoints) prog in
   let prune = try_opt (combine_opt
-                         [branch_prune;
+                         [branch_prune_false;
                           (as_opt_function Transform_assumption.hoist_assumption);
                           cleanup_all;]) in
   let prog2 = { prog with main = prune prog.main } in
@@ -429,7 +429,7 @@ let test_branch_pruning prog deopt =
   let open Eval in
   let open Transform in
   let prog = try_opt (as_opt_program Transform_assumption.insert_checkpoints) prog in
-  let prog2 = { prog with main = try_opt branch_prune prog.main } in
+  let prog2 = { prog with main = try_opt branch_prune_false prog.main } in
   let res1 = Eval.run_forever no_input prog in
   let res2 = Eval.run_forever no_input prog2 in
   assert_equal res1.trace res2.trace;
