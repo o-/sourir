@@ -400,6 +400,7 @@ class map = object (m)
   method variable_use x = x
   method variable_assign x = x
   method binder x = x
+  method varmap_binder x = x
 
   method value v = v
 
@@ -489,5 +490,5 @@ class map = object (m)
   }
   method varmap = List.map m#varmap_entry
   method varmap_entry = function
-    | x, e -> m#binder x, m#expression e
+    | x, e -> m#varmap_binder x, m#expression e
 end
