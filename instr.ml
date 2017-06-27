@@ -56,12 +56,12 @@ and instruction =
   | Print of expression
   | Assert of expression
   | Stop of expression
-  | Osr of {
+  | Assumption of {
     label : label;
-    cond : expression list;
+    guards : expression list;
     target : label position;
     varmap : varmap;
-    frame_maps : osr_frame_map list; }
+    extra_frames : extra_frame_map list; }
   | Comment of string
 and label_type =
   | MergeLabel of label
@@ -69,13 +69,11 @@ and label_type =
 and array_def =
   | Length of expression
   | List of expression list
-and varmap = varmap_entry list
-and osr_frame_map = {
+and varmap = (variable * expression) list
+and extra_frame_map = {
   varmap : varmap;
   cont_pos : label position;
   cont_res : variable; }
-and varmap_entry =
-  | Osr_var of variable * expression
 and argument = expression
 and expression =
   | Simple of simple_expression
@@ -147,7 +145,7 @@ type binding =
   | Ref of address
 
 exception Unbound_label of label_type
-exception Unbound_osr_label of label
+exception Unbound_bailout_target of label
 
 let resolve_by pred code =
   let rec loop i =
@@ -164,13 +162,13 @@ let resolve code l =
   try resolve_by pred code
   with Not_found -> raise (Unbound_label l)
 
-let resolve_osr code l =
+let resolve_bailout code l =
   let pred = function[@warning "-4"]
-    | Osr {label} -> label = l
+    | Assumption {label} -> label = l
     | _ -> false
   in
   try resolve_by pred code
-  with Not_found -> raise (Unbound_osr_label l)
+  with Not_found -> raise (Unbound_bailout_target l)
 
 let resolver_by indexer code =
   let tbl = Hashtbl.create 42 in
@@ -193,15 +191,15 @@ let resolver code =
     try resolver l
     with Not_found -> raise (Unbound_label l)
 
-let resolver_osr code =
+let resolver_bailout code =
   let indexer = function[@warning "-4"]
-    | Osr {label} -> Some label
+    | Assumption {label} -> Some label
     | _ -> None
   in
   let resolver = resolver_by indexer code in
   fun l ->
     try resolver l
-    with Not_found -> raise (Unbound_osr_label l)
+    with Not_found -> raise (Unbound_bailout_target l)
 
 let simple_expr_vars = function
   | Var x -> VarSet.singleton x
@@ -237,7 +235,7 @@ let declared_vars = function
     | Goto _
     | Print _
     | Assert _
-    | Osr _
+    | Assumption _
     | Comment _
     | Stop _) -> VarSet.empty
 
@@ -255,7 +253,7 @@ let defined_vars = function
     | Comment _
     | Print _
     | Assert _
-    | Osr _
+    | Assumption _
     | Array_assign _ (* The array has to be defined already. *)
     | Stop _
   ) as e -> declared_vars e
@@ -275,7 +273,7 @@ let dropped_vars = function
   | Comment _
   | Print _
   | Assert _
-  | Osr _
+  | Assumption _
   | Stop _ -> VarSet.empty
 
 (* Which variables need to be defined
@@ -307,13 +305,13 @@ let used_vars = function
   | Goto _
   | Comment _
     -> VarSet.empty
-  | Osr {cond; varmap; frame_maps} ->
-    let fold_cond used cond = VarSet.union used (expr_vars cond) in
-    let from_cond = List.fold_left fold_cond VarSet.empty cond in
-    let map_vars map = list_vars (List.map (fun (Osr_var (_, e)) -> e) map) in
+  | Assumption {guards; varmap; extra_frames} ->
+    let fold_cond used guard = VarSet.union used (expr_vars guard) in
+    let from_cond = List.fold_left fold_cond VarSet.empty guards in
+    let map_vars map = list_vars (List.map (fun (_, e) -> e) map) in
     let fold_map used {varmap} =
       VarSet.union used (map_vars varmap) in
-    let from_map = List.fold_left fold_map (map_vars varmap) frame_maps in
+    let from_map = List.fold_left fold_map (map_vars varmap) extra_frames in
     VarSet.union from_cond from_map
 
 (* Which variables need to be in scope
@@ -335,7 +333,7 @@ let required_vars = function
     | Comment _
     | Print _
     | Assert _
-    | Osr _
+    | Assumption _
     ) as e -> used_vars e
 
 let changed_vars = function
@@ -353,7 +351,7 @@ let changed_vars = function
   | Comment _
   | Print _
   | Assert _
-  | Osr _
+  | Assumption _
   | Stop _ -> VarSet.empty
 
 exception FunctionDoesNotExist of identifier
@@ -392,11 +390,8 @@ end
 let checkpoint_prefix = "cp_"
 let checkpoint_label pc =
   checkpoint_prefix ^ (string_of_int pc)
-
-let has_osr =
-  let is_osr = function[@warning "-4"]
-    | Osr _ -> true | _ -> false in
-  Array.exists is_osr
+let has_checkpoints prog =
+  Array.exists (function[@warning "-4"] | Assumption _ -> true | _ -> false) prog
 
 let independent instr exp =
   VarSet.is_empty (VarSet.inter (changed_vars instr) (expr_vars exp))
@@ -460,13 +455,13 @@ class map = object (m)
       Assert (m#expression e)
     | Stop e ->
       Stop (m#expression e)
-    | Osr {label; cond; target; varmap; frame_maps} ->
-      Osr {
+    | Assumption {label; guards; target; varmap; extra_frames} ->
+      Assumption {
         label = m#osr_label label;
-        cond = List.map m#expression cond;
-        target = m#osr_target target;
-        varmap = m#osr_varmap varmap;
-        frame_maps = List.map m#osr_frame frame_maps;
+        guards = List.map m#expression guards;
+        target = m#target target;
+        varmap = m#varmap varmap;
+        extra_frames = List.map m#extra_frame extra_frames;
       }
     | Comment s ->
       Comment s
@@ -477,23 +472,22 @@ class map = object (m)
     | List es ->
       List (List.map m#expression es)
 
-  method osr_func_label l = l
-  method osr_version_label l = l
-  method osr_target_label l = m#osr_label l
+  method target_func_label l = l
+  method target_version_label l = l
+  method target_label l = l
 
-  method osr_target {func; version; pos} = {
-    func = m#osr_func_label func;
-    version = m#osr_version_label version;
-    pos = m#osr_target_label pos }
+  method target {func; version; pos} = {
+    func = m#target_func_label func;
+    version = m#target_version_label version;
+    pos = m#target_label pos }
 
   method frame_cont_res res = res
-  method osr_frame {varmap; cont_pos; cont_res} = {
-    varmap = m#osr_varmap varmap;
-    cont_pos = m#osr_target cont_pos;
+  method extra_frame {varmap; cont_pos; cont_res} = {
+    varmap = m#varmap varmap;
+    cont_pos = m#target cont_pos;
     cont_res = m#frame_cont_res cont_res;
   }
-  method osr_varmap = List.map m#osr_varmap_entry
-  method osr_varmap_entry = function
-    | Osr_var (x, e) ->
-      Osr_var (m#binder x, m#expression e)
+  method varmap = List.map m#varmap_entry
+  method varmap_entry = function
+    | x, e -> m#binder x, m#expression e
 end

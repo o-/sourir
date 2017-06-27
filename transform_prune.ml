@@ -23,8 +23,8 @@ let branch_prune : transform_instructions = fun input ->
     if pc = Array.length input.instrs then branches else
     match[@warning "-4"] input.instrs.(pc) with
     | Branch (e, l1, l2) when Analysis.ExpressionSet.mem e (assumptions pc) ->
-      (* This branch has to go to l2! *)
-      find_candidates (pc+1) ((pc,l2)::branches)
+      (* This branch has to go to l1! *)
+      find_candidates (pc+1) ((pc,l1)::branches)
     | _ ->
       find_candidates (pc+1) branches
   in

@@ -7,7 +7,7 @@ type inlining_candidate = {
   target : afunction;
   ret : variable;
   args : argument list;
-  osr : osr_frame_map list option;
+  checkpoint : extra_frame_map list option;
   next : inlining_site;
 }
 and inlining_site = inlining_candidate list
@@ -158,14 +158,14 @@ let inline ?(max_depth=100) ?(max_size=1000) () ({main; functions} as orig_prog 
     else begin
       let inlinings = ref [] in
       (* This function takes the information of a callsite and a safepoint after it to
-       * compute a combined osr frames list for the inlinee. To this end the current
+       * compute a combined frames list for the inlinee. To this end the current
        * toplevel varmap has to be put into the extra frames list. *)
-      let create_osr_continuation top_frame call_var osr_label =
+      let checkpoint_continuation top_frame call_var label =
         let pos = {
           func = func.name;
           version = version.label;
-          pos = osr_label; } in
-        { varmap = List.filter (fun v -> match v with | Osr_var (x, _) -> x <> call_var) top_frame;
+          pos = label; } in
+        { varmap = List.filter (fun v -> match v with | x, _ -> x <> call_var) top_frame;
           cont_res = call_var;
           cont_pos = pos; }
       in
@@ -174,18 +174,18 @@ let inline ?(max_depth=100) ?(max_size=1000) () ({main; functions} as orig_prog 
         match[@warning "-4"] instrs.(pc) with
         | Call (x, (Simple (Constant (Fun_ref f))), es) ->
           if LabelSet.mem f seen then () else begin
-            (* To be able to osr out of this call we need to have a var_map
+            (* To be able to bail out of this call we need to have a var_map
              * after the call to reconstruct the caller environment and
              * to have a target label after the call to reconstruct the continuation. *)
             let checkpoint = (
               match[@warning "-4"] instrs.(pc+1) with
-                | Osr {label; varmap; frame_maps} ->
-                  Some ((create_osr_continuation varmap x label) :: frame_maps)
+                | Assumption {label; varmap; extra_frames} ->
+                  Some ((checkpoint_continuation varmap x label) :: extra_frames)
                 | _ -> None) in
             let seen = LabelSet.add f seen in
             let callee = lookup_fun orig_prog f in
             let next = compute_inline_order callee seen (depth+1) in
-            let inlining = { pos = pc; target = callee; ret = x; args = es; osr = checkpoint; next } in
+            let inlining = { pos = pc; target = callee; ret = x; args = es; checkpoint = checkpoint; next } in
             inlinings := inlining :: !inlinings
           end
         | _ -> ()
@@ -205,7 +205,7 @@ let inline ?(max_depth=100) ?(max_size=1000) () ({main; functions} as orig_prog 
    *  version v1:
    *    ...
    *    call res = foo _
-   *    osr t0 _ (f0,v0,t0) [frame0]  (f1,v1,t1) [frame1], (f2,v2,t2) [frame2]
+   *    assumption t0 _ (f0,v0,t0) [frame0]  (f1,v1,t1) [frame1], (f2,v2,t2) [frame2]
    *
    * Then we want to extend foo's extra_frames list by the following list:
    *    (f0,v1,t0) [var res = $, frame0/res], (f1,v1,t1) [frame1], (f2,v2,t2) [frame2]
@@ -213,19 +213,19 @@ let inline ?(max_depth=100) ?(max_size=1000) () ({main; functions} as orig_prog 
    * This ensures that when the deoptimized foo returns it returns after the call with the call
    * stack identical to before the call and the result stored to res.
    * Note: in the target we create function and version are the current active version and
-   *       not the original osr target (ie. v1 in (f0,v1,t0) is not a typo).
+   *       not the original bail out target (ie. v1 in (f0,v1,t0) is not a typo).
    *
-   * The list of extra osr frames is accumulated by compute_inlining_order
+   * The list of extra frames is accumulated by compute_inlining_order
    * *)
-  let fixup_osr extra_frames input =
+  let fixup new_frames input =
     let open Transform_utils in
-    let fixup_osr pc =
+    let fixup pc =
       match[@warning "-4"] input.instrs.(pc) with
-      | Osr ({frame_maps} as osr) ->
-        Replace [ Osr {osr with frame_maps = frame_maps @ extra_frames} ]
+      | Assumption ({extra_frames} as def) ->
+        Replace [ Assumption {def with extra_frames = extra_frames @ new_frames} ]
       | _ -> Unchanged
     in
-    match change_instrs fixup_osr input with
+    match change_instrs fixup input with
     | None -> input.instrs
     | Some instrs -> instrs
   in
@@ -236,20 +236,20 @@ let inline ?(max_depth=100) ?(max_size=1000) () ({main; functions} as orig_prog 
     then cur
     else
       let used_labels = ref (extract_labels cur.instrs) in
-      let get {target; next; pos; ret; args; osr} =
+      let get {target; next; pos; ret; args; checkpoint} =
         let apply next = if next = []
                          then Analysis.as_analysis_input target (active_version target)
                          else apply_inlinings target next in
         let callee = apply next in
-        match has_osr callee.instrs, osr with
+        match has_checkpoints callee.instrs, checkpoint with
         | false, _ ->
           let inlinee, new_used = compose cur callee !used_labels ret args in
           used_labels := new_used;
           (pos, 1, inlinee.instrs)
-        | true, Some osr ->
+        | true, Some checkpoint ->
           let inlinee, new_used = compose cur callee !used_labels ret args in
           used_labels := new_used;
-          (pos, 1, fixup_osr osr inlinee)
+          (pos, 1, fixup checkpoint inlinee)
         | true, None ->
           (* The callee needs to osr but the caller does not have a safepoint
            * after the call. We can't do anything. *)

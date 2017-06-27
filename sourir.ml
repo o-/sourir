@@ -70,7 +70,7 @@ let () =
     | Check.FunctionDoesNotExist f' ->
       Printf.eprintf "called function %s does not exist\n" f';
     | Check.VersionDoesNotExist (f', v') ->
-      Printf.eprintf "osr target %s %s does not exist\n" f' v';
+      Printf.eprintf "checkpoint target %s %s does not exist\n" f' v';
     | Check.InvalidNumArgs pc ->
       Printf.eprintf "at line %d: invalid number of arguments\n" (pc+1);
     | Check.InvalidArgument (pc, expression) ->
@@ -79,8 +79,8 @@ let () =
       Printf.eprintf "label %s does not exist\n" l;
     | Instr.Unbound_label (BranchLabel l) ->
       Printf.eprintf "label $%s does not exist\n" l;
-    | Instr.Unbound_osr_label l ->
-      Printf.eprintf "osr target %s does not exist\n" l;
+    | Instr.Unbound_bailout_target l ->
+      Printf.eprintf "checkpoint target %s does not exist\n" l;
     | Check.BranchLabelReused pc ->
       Printf.eprintf "label at line %d is used more than once\n" (pc+1);
     | Check.FallthroughLabel pc ->

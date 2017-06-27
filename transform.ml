@@ -105,7 +105,7 @@ exception UnknownOptimization of string
 
 let all_opts = ["prune";
                 "prune_no_hoist";
-                "hoist_osr";
+                "hoist_guards";
                 "const_fold";
                 "hoist_assign";
                 "hoist_drop";
@@ -128,7 +128,7 @@ let optimize (opts : string list) (prog : program) : program option =
       as_opt_program branch_prune_no_hoist
     | "prune" ->
       as_opt_program branch_prune
-    | "hoist_osr" ->
+    | "hoist_guards" ->
       as_opt_program (as_opt_function Transform_assumption.hoist_assumption)
     | "inline_max" ->
       Transform_inline.inline ()
@@ -146,7 +146,7 @@ let optimize (opts : string list) (prog : program) : program option =
     combine_opt [
         (as_opt_program Transform_assumption.insert_checkpoints);
         optimizer;
-        Transform_assumption.remove_empty_osr;
+        Transform_assumption.remove_empty_checkpoints;
         optimizer;
       ]
   in

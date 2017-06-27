@@ -93,11 +93,11 @@ let well_formed prog =
         | Array_length (e) ->
           check_simple_expr e in
       let check_arg = check_expr in
-      let check_osr = function
-        | Osr_var (_, e) -> check_expr e
+      let check_varmap_entry = function
+        | _, e -> check_expr e
       in
-      let check_osr_map = List.iter check_osr in
-      let check_osr_frame {varmap} = check_osr_map varmap in
+      let check_varmap = List.iter check_varmap_entry in
+      let check_extra_frame {varmap} = check_varmap varmap in
       match instr with
       | Call (_x, f, es) ->
         (check_expr f;
@@ -117,15 +117,15 @@ let well_formed prog =
       | Array_assign (_, i, e) ->
         check_expr i;
         check_expr e;
-      | Osr {cond; varmap; frame_maps} ->
-        List.iter check_expr cond;
-        check_osr_map varmap;
-        List.iter check_osr_frame frame_maps
+      | Assumption {guards; varmap; extra_frames} ->
+        List.iter check_expr guards;
+        check_varmap varmap;
+        List.iter check_extra_frame extra_frames
     in
 
     let seen = ref [] in
 
-    (* Check correctness of calls and osrs *)
+    (* Check correctness of calls and assumption points *)
     let check_instr pc instr =
       match[@warning "-4"] instr with
       | Call (x, f, exs) ->
@@ -138,12 +138,12 @@ let well_formed prog =
         | _ -> ()
         end;
         check_fun_ref instr
-      | Osr {target = {func; version; pos=label}} ->
+      | Assumption {target = {func; version; pos=label}} ->
         (* check if the function exists and if the actual arguments
          * are compatible with the formals *)
         let func = lookup_fun func in
         let vers = lookup_version func version in
-        let _ = Instr.resolve_osr vers.instrs label in
+        let _ = Instr.resolve_bailout vers.instrs label in
         check_fun_ref instr
       | Goto l ->
         let _ = Instr.resolve instrs (MergeLabel l) in

@@ -128,7 +128,7 @@ Parsing an instruction, we parsed an identifier so far (variable or label).
 - if this is a label declaration, we expect a semicolon: "<label>:"
 - if this is an assignment, we expect a left arrow: "<var> <- <expression>"
 
-program: OSR IDENTIFIER LBRACKET RBRACKET LPAREN IDENTIFIER COMMA IDENTIFIER COMMA IDENTIFIER RPAREN LBRACKET RBRACKET COMMA LPAREN IDENTIFIER COMMA IDENTIFIER COMMA IDENTIFIER RPAREN LBRACKET TRIPLE_DOT 
+program: ASSUMPTION IDENTIFIER LBRACKET RBRACKET LPAREN IDENTIFIER COMMA IDENTIFIER COMMA IDENTIFIER RPAREN LBRACKET RBRACKET COMMA LPAREN IDENTIFIER COMMA IDENTIFIER COMMA IDENTIFIER RPAREN LBRACKET TRIPLE_DOT 
 ##
 ## Ends in an error in state: 112.
 ##
@@ -142,14 +142,14 @@ There was an error parsing the variable map of an extra frame. The extra
 frame varmap syntax is "[var x = $, ...]"
 Note that the first variable binding in the environment mapping needs to
 capture the result register "$".
-The complete instruction syntax is "osr <label> [<conditions>] <frame> <extra_frame>*",
-where <frame> is "(func_label, vers_label, osr_label) [<osr_map>*]"
-and <extra_frame> is "(func_label, vers_label, osr_label) [var res = $, <osr_map>*]"
-and <osr_map> is "var x = exp"
+The complete instruction syntax is "assumption <label> [<conditions>] <frame> <extra_frame>*",
+where <frame> is "(func_label, vers_label, label) [<varmap>*]"
+and <extra_frame> is "(func_label, vers_label, label) [var res = $, <varmap>*]"
+and <varmap> is "var x = exp"
 For example,
-"osr l [(a==1)] (Main,optimized,l2) [var x = e, var y = y, var z], (f,v,l) [var y = $, var z = (1+x)]".
+"assumption l [(a==1)] (Main,optimized,l2) [var x = e, var y = y, var z], (f,v,l) [var y = $, var z = (1+x)]".
 
-program: OSR IDENTIFIER LBRACKET RBRACKET LPAREN IDENTIFIER COMMA IDENTIFIER COMMA IDENTIFIER RPAREN LBRACKET RBRACKET COMMA TRIPLE_DOT 
+program: ASSUMPTION IDENTIFIER LBRACKET RBRACKET LPAREN IDENTIFIER COMMA IDENTIFIER COMMA IDENTIFIER RPAREN LBRACKET RBRACKET COMMA TRIPLE_DOT 
 ##
 ## Ends in an error in state: 104.
 ##
@@ -160,130 +160,130 @@ program: OSR IDENTIFIER LBRACKET RBRACKET LPAREN IDENTIFIER COMMA IDENTIFIER COM
 ##
 
 There was an error parsing the specification of an extra frame. The extra
-frame syntax is "(func_label, vers_label, osr_label) [var x = $, ...]"
-The complete instruction syntax is "osr <label> [<conditions>] <frame> <extra_frame>*",
-where <frame> is "(func_label, vers_label, osr_label) [<osr_map>*]"
-and <extra_frame> is "(func_label, vers_label, osr_label) [var res = $, <osr_map>*]"
-and <osr_map> is "var x = exp"
+frame syntax is "(func_label, vers_label, label) [var x = $, ...]"
+The complete instruction syntax is "assumption <label> [<conditions>] <frame> <extra_frame>*",
+where <frame> is "(func_label, vers_label, label) [<varmap>*]"
+and <extra_frame> is "(func_label, vers_label, label) [var res = $, <varmap>*]"
+and <varmap> is "var x = exp"
 For example,
-"osr l [(a==1)] (Main,optimized,l2) [var x = e, var y = y, var z], (f,v,l) [var y = $, var z = (1+x)]".
+"assumption l [(a==1)] (Main,optimized,l2) [var x = e, var y = y, var z], (f,v,l) [var y = $, var z = (1+x)]".
 
-program: OSR IDENTIFIER LBRACKET NIL RBRACKET LPAREN IDENTIFIER COMMA IDENTIFIER COMMA IDENTIFIER RPAREN LBRACKET TRIPLE_DOT 
+program: ASSUMPTION IDENTIFIER LBRACKET NIL RBRACKET LPAREN IDENTIFIER COMMA IDENTIFIER COMMA IDENTIFIER RPAREN LBRACKET TRIPLE_DOT 
 ##
 ## Ends in an error in state: 95.
 ##
-## osr_map -> LBRACKET . loption(separated_nonempty_list(COMMA,osr_def)) RBRACKET [ NEWLINE COMMA ]
+## varmap -> LBRACKET . loption(separated_nonempty_list(COMMA,osr_def)) RBRACKET [ NEWLINE COMMA ]
 ##
 ## The known suffix of the stack is as follows:
 ## LBRACKET 
 ##
 
 There was an error parsing the specification of the new environment of an
-osr instruction. The specification is a comma-separated list of terms of the form
+assumption instruction. The specification is a comma-separated list of terms of the form
 "var x = e" (where "e" is an expression).
-The complete instruction syntax is "osr <label> [<conditions>] <frame> <extra_frame>*",
-where <frame> is "(func_label, vers_label, osr_label) [<osr_map>*]"
-and <extra_frame> is "(func_label, vers_label, osr_label) [var res = $, <osr_map>*]"
-and <osr_map> is "var x = exp"
+The complete instruction syntax is "assumption <label> [<conditions>] <frame> <extra_frame>*",
+where <frame> is "(func_label, vers_label, label) [<varmap>*]"
+and <extra_frame> is "(func_label, vers_label, label) [var res = $, <varmap>*]"
+and <varmap> is "var x = exp"
 For example,
-"osr l [(a==1)] (Main,optimized,l2) [var x = e, var y = y, var z], (f,v,l) [var y = $, var z = (1+x)]".
+"assumption l [(a==1)] (Main,optimized,l2) [var x = e, var y = y, var z], (f,v,l) [var y = $, var z = (1+x)]".
 
-program: OSR IDENTIFIER LBRACKET NIL RBRACKET LPAREN IDENTIFIER COMMA IDENTIFIER COMMA IDENTIFIER RPAREN TRIPLE_DOT 
+program: ASSUMPTION IDENTIFIER LBRACKET NIL RBRACKET LPAREN IDENTIFIER COMMA IDENTIFIER COMMA IDENTIFIER RPAREN TRIPLE_DOT 
 ##
 ## Ends in an error in state: 94.
 ##
-## instruction -> OSR label LBRACKET loption(separated_nonempty_list(COMMA,expression)) RBRACKET LPAREN label COMMA label COMMA label RPAREN . osr_map list(preceded(COMMA,osr_frame)) [ NEWLINE ]
+## instruction -> OSR label LBRACKET loption(separated_nonempty_list(COMMA,expression)) RBRACKET LPAREN label COMMA label COMMA label RPAREN . varmap list(preceded(COMMA,osr_frame)) [ NEWLINE ]
 ##
 ## The known suffix of the stack is as follows:
 ## OSR label LBRACKET loption(separated_nonempty_list(COMMA,expression)) RBRACKET LPAREN label COMMA label COMMA label RPAREN 
 ##
 
-After "osr [...] (...) " we expect the specification of the new environment.
+After "assumption [...] (...) " we expect the specification of the new environment.
 It is a square bracket enclosed, comma-separated list
 of terms of the form "var x = e" (where "e" is an expression).
-The complete instruction syntax is "osr <label> [<conditions>] <frame> <extra_frame>*",
-where <frame> is "(func_label, vers_label, osr_label) [<osr_map>*]"
-and <extra_frame> is "(func_label, vers_label, osr_label) [var res = $, <osr_map>*]"
-and <osr_map> is "var x = exp"
+The complete instruction syntax is "assumption <label> [<conditions>] <frame> <extra_frame>*",
+where <frame> is "(func_label, vers_label, label) [<varmap>*]"
+and <extra_frame> is "(func_label, vers_label, label) [var res = $, <varmap>*]"
+and <varmap> is "var x = exp"
 For example,
-"osr l [(a==1)] (Main,optimized,l2) [var x = e, var y = y, var z], (f,v,l) [var y = $, var z = (1+x)]".
+"assumption l [(a==1)] (Main,optimized,l2) [var x = e, var y = y, var z], (f,v,l) [var y = $, var z = (1+x)]".
 
 
-program: OSR IDENTIFIER LBRACKET NIL RBRACKET LPAREN TRIPLE_DOT 
+program: ASSUMPTION IDENTIFIER LBRACKET NIL RBRACKET LPAREN TRIPLE_DOT 
 ##
 ## Ends in an error in state: 88.
 ##
-## instruction -> OSR label LBRACKET loption(separated_nonempty_list(COMMA,expression)) RBRACKET LPAREN . label COMMA label COMMA label RPAREN osr_map list(preceded(COMMA,osr_frame)) [ NEWLINE ]
+## instruction -> OSR label LBRACKET loption(separated_nonempty_list(COMMA,expression)) RBRACKET LPAREN . label COMMA label COMMA label RPAREN varmap list(preceded(COMMA,osr_frame)) [ NEWLINE ]
 ##
 ## The known suffix of the stack is as follows:
 ## OSR label LBRACKET loption(separated_nonempty_list(COMMA,expression)) RBRACKET LPAREN 
 ##
 
-Parsing an osr instruction, there is an error with the syntax of the target
+Parsing an assumption instruction, there is an error with the syntax of the target
 location "(function, version, label)".
-The complete instruction syntax is "osr <label> [<conditions>] <frame> <extra_frame>*",
-where <frame> is "(func_label, vers_label, osr_label) [<osr_map>*]"
-and <extra_frame> is "(func_label, vers_label, osr_label) [var res = $, <osr_map>*]"
-and <osr_map> is "var x = exp"
+The complete instruction syntax is "assumption <label> [<conditions>] <frame> <extra_frame>*",
+where <frame> is "(func_label, vers_label, label) [<varmap>*]"
+and <extra_frame> is "(func_label, vers_label, label) [var res = $, <varmap>*]"
+and <varmap> is "var x = exp"
 For example,
-"osr l [(a==1)] (Main,optimized,l2) [var x = e, var y = y, var z], (f,v,l) [var y = $, var z = (1+x)]".
+"assumption l [(a==1)] (Main,optimized,l2) [var x = e, var y = y, var z], (f,v,l) [var y = $, var z = (1+x)]".
 
-program: OSR IDENTIFIER LBRACKET NIL RBRACKET TRIPLE_DOT 
+program: ASSUMPTION IDENTIFIER LBRACKET NIL RBRACKET TRIPLE_DOT 
 ##
 ## Ends in an error in state: 87.
 ##
-## instruction -> OSR label LBRACKET loption(separated_nonempty_list(COMMA,expression)) RBRACKET . LPAREN label COMMA label COMMA label RPAREN osr_map list(preceded(COMMA,osr_frame)) [ NEWLINE ]
+## instruction -> OSR label LBRACKET loption(separated_nonempty_list(COMMA,expression)) RBRACKET . LPAREN label COMMA label COMMA label RPAREN varmap list(preceded(COMMA,osr_frame)) [ NEWLINE ]
 ##
 ## The known suffix of the stack is as follows:
 ## OSR label LBRACKET loption(separated_nonempty_list(COMMA,expression)) RBRACKET 
 ##
 
-Parsing an osr instruction, we parsed "osr l [<expr> ...]", and are
+Parsing an assumption instruction, we parsed "assumption l [<expr> ...]", and are
 now expecting a target location "(function, version, label)".
-The complete instruction syntax is "osr <label> [<conditions>] <frame> <extra_frame>*",
-where <frame> is "(func_label, vers_label, osr_label) [<osr_map>*]"
-and <extra_frame> is "(func_label, vers_label, osr_label) [var res = $, <osr_map>*]"
-and <osr_map> is "var x = exp"
+The complete instruction syntax is "assumption <label> [<conditions>] <frame> <extra_frame>*",
+where <frame> is "(func_label, vers_label, label) [<varmap>*]"
+and <extra_frame> is "(func_label, vers_label, label) [var res = $, <varmap>*]"
+and <varmap> is "var x = exp"
 For example,
-"osr l [(a==1)] (Main,optimized,l2) [var x = e, var y = y, var z], (f,v,l) [var y = $, var z = (1+x)]".
+"assumption l [(a==1)] (Main,optimized,l2) [var x = e, var y = y, var z], (f,v,l) [var y = $, var z = (1+x)]".
 
-program: OSR IDENTIFIER LBRACKET TRIPLE_DOT 
+program: ASSUMPTION IDENTIFIER LBRACKET TRIPLE_DOT 
 ##
 ## Ends in an error in state: 84.
 ##
-## instruction -> OSR label LBRACKET . loption(separated_nonempty_list(COMMA,expression)) RBRACKET LPAREN label COMMA label COMMA label RPAREN osr_map list(preceded(COMMA,osr_frame)) [ NEWLINE ]
+## instruction -> OSR label LBRACKET . loption(separated_nonempty_list(COMMA,expression)) RBRACKET LPAREN label COMMA label COMMA label RPAREN varmap list(preceded(COMMA,osr_frame)) [ NEWLINE ]
 ##
 ## The known suffix of the stack is as follows:
 ## OSR label LBRACKET 
 ##
 
-Parsing an osr instruction, there was an error parsing the list of conditions.
+Parsing an assumption instruction, there was an error parsing the list of conditions.
 Conditions are expressions like "(x == 2)".
-The complete instruction syntax is "osr <label> [<conditions>] <frame> <extra_frame>*",
-where <frame> is "(func_label, vers_label, osr_label) [<osr_map>*]"
-and <extra_frame> is "(func_label, vers_label, osr_label) [var res = $, <osr_map>*]"
-and <osr_map> is "var x = exp"
+The complete instruction syntax is "assumption <label> [<conditions>] <frame> <extra_frame>*",
+where <frame> is "(func_label, vers_label, label) [<varmap>*]"
+and <extra_frame> is "(func_label, vers_label, label) [var res = $, <varmap>*]"
+and <varmap> is "var x = exp"
 For example,
-"osr l [(a==1)] (Main,optimized,l2) [var x = e, var y = y, var z], (f,v,l) [var y = $, var z = (1+x)]".
+"assumption l [(a==1)] (Main,optimized,l2) [var x = e, var y = y, var z], (f,v,l) [var y = $, var z = (1+x)]".
 
-program: OSR TRIPLE_DOT 
+program: ASSUMPTION TRIPLE_DOT 
 ##
 ## Ends in an error in state: 81.
 ##
-## instruction -> OSR . label LBRACKET loption(separated_nonempty_list(COMMA,expression)) RBRACKET LPAREN label COMMA label COMMA label RPAREN osr_map list(preceded(COMMA,osr_frame)) [ NEWLINE ]
+## instruction -> OSR . label LBRACKET loption(separated_nonempty_list(COMMA,expression)) RBRACKET LPAREN label COMMA label COMMA label RPAREN varmap list(preceded(COMMA,osr_frame)) [ NEWLINE ]
 ##
 ## The known suffix of the stack is as follows:
 ## OSR 
 ##
 
-Parsing an osr instruction, we parsed "osr", and are now expecting a bracket
+Parsing an assumption instruction, we parsed "assumption", and are now expecting a bracket
 enclosed list of conditions. Conditions are expressions like "(x == 2)".
-The complete instruction syntax is "osr <label> [<conditions>] <frame> <extra_frame>*",
-where <frame> is "(func_label, vers_label, osr_label) [<osr_map>*]"
-and <extra_frame> is "(func_label, vers_label, osr_label) [var res = $, <osr_map>*]"
-and <osr_map> is "var x = exp"
+The complete instruction syntax is "assumption <label> [<conditions>] <frame> <extra_frame>*",
+where <frame> is "(func_label, vers_label, label) [<varmap>*]"
+and <extra_frame> is "(func_label, vers_label, label) [var res = $, <varmap>*]"
+and <varmap> is "var x = exp"
 For example,
-"osr l [(a==1)] (Main,optimized,l2) [var x = e, var y = y, var z], (f,v,l) [var y = $, var z = (1+x)]".
+"assumption l [(a==1)] (Main,optimized,l2) [var x = e, var y = y, var z], (f,v,l) [var y = $, var z = (1+x)]".
 
 program: LBRACE IDENTIFIER COMMA STOP 
 ##

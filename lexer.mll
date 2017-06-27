@@ -9,7 +9,7 @@ let keyword_table = [
   "goto", GOTO;
   "print", PRINT;
   "assert", ASSERT;
-  "osr", OSR;
+  "assumption", ASSUMPTION;
   "stop", STOP;
   "read", READ;
   "drop", DROP;

@@ -61,9 +61,9 @@ let disassemble_instrs buf ?(ott_compatible = false) ?(format_pc = no_line_numbe
     | Print exp                       -> pr buf " print %a" dump_expr exp
     | Assert exp                      -> pr buf " assert %a" dump_expr exp
     | Read var                        -> pr buf " read %s" var
-    | Osr {label; cond; target={func; version; pos}; varmap; frame_maps} ->
+    | Assumption {label; guards; target={func; version; pos}; varmap; extra_frames} ->
       let dump_var buf = function
-        | Osr_var (x, e)     -> pr buf "var %s = %a" x dump_expr e
+        | x, e -> pr buf "var %s = %a" x dump_expr e
       in
       let dump_frame buf {cont_pos={func; version; pos}; cont_res; varmap} =
         pr buf "(%s, %s, %s) [var %s = $%s%a]"
@@ -72,13 +72,13 @@ let disassemble_instrs buf ?(ott_compatible = false) ?(format_pc = no_line_numbe
             (if varmap = [] then "" else ", ")
             (dump_comma_separated dump_var) varmap
       in
-      pr buf " osr %s [%a] (%s, %s, %s) [%a]%s%a"
+      pr buf " assumption %s [%a] (%s, %s, %s) [%a]%s%a"
         label
-        (dump_comma_separated dump_expr) cond
+        (dump_comma_separated dump_expr) guards
         func version pos
         (dump_comma_separated dump_var) varmap
-        (if frame_maps = [] then "" else ", ")
-        (dump_comma_separated dump_frame) frame_maps
+        (if extra_frames = [] then "" else ", ")
+        (dump_comma_separated dump_frame) extra_frames
     | Comment str                     -> pr buf " #%s" str
     end;
     pr buf "\n"

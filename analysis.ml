@@ -29,7 +29,7 @@ let successors_at (instrs : instructions) resolve pc : pc list =
     | Decl_var _ | Decl_array _
     | Assign _ | Array_assign _
     | Drop _ | Read _ | Call _ | Label _
-    | Comment _ | Osr _ | Print _ | Assert _ ->
+    | Comment _ | Assumption _ | Print _ | Assert _ ->
       let is_last = pc' = Array.length instrs in
       if is_last then [] else [pc']
     (* those are the instructions which manipulate controlflow:  *)
@@ -64,12 +64,12 @@ let stops (instrs : instructions) =
   let pcs = Array.to_list (pcs instrs) in
   List.filter is_exit pcs
 
-let osrs (instrs : instructions) =
-  let is_osr pc = match[@warning "-4"] instrs.(pc) with
-    | Osr _ -> true
+let assumptions (instrs : instructions) =
+  let is_assumption pc = match[@warning "-4"] instrs.(pc) with
+    | Assumption _ -> true
     | _ -> false in
   let pcs = Array.to_list (pcs instrs) in
-  List.filter is_osr pcs
+  List.filter is_assumption pcs
 
 let dataflow_analysis (next : pc list array)
                       (init_state : ('a * pc) list)
@@ -116,7 +116,7 @@ let forward_analysis init_state instrs merge update =
 
 let backwards_analysis init_state instrs merge update =
   let predecessors = predecessors instrs in
-  let exits = stops instrs @ osrs instrs in
+  let exits = stops instrs @ assumptions instrs in
   assert (exits <> []);
   let init = List.map (fun pos -> (init_state, pos)) exits in
   make_total (dataflow_analysis predecessors init instrs merge update)
@@ -319,8 +319,8 @@ let valid_assumptions {instrs} : pc -> ExpressionSet.t =
   in
   let update pc cur =
     match[@warning "-4"] instrs.(pc) with
-    | Osr {cond} ->
-      List.fold_right ExpressionSet.add cond cur
+    | Assumption {guards} ->
+      List.fold_right ExpressionSet.add guards cur
     | _ ->
       ExpressionSet.filter (fun exp ->
           Instr.independent instrs.(pc) exp) cur
